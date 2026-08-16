@@ -398,7 +398,7 @@ h3 {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 0.85fr 1.15fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
   margin-block: var(--space-10) 0;
   overflow: hidden;
@@ -408,8 +408,12 @@ h3 {
 }
 
 .privacy-note__facts div {
+  display: flex;
   min-width: 0;
-  padding: var(--space-3);
+  min-height: 4.5rem;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0.9rem 1rem;
   background: color-mix(in srgb, var(--color-surface-subtle) 92%, transparent);
 }
 
@@ -418,15 +422,17 @@ h3 {
   font-size: 0.66rem;
   font-weight: 650;
   letter-spacing: 0.04em;
+  line-height: 1.2;
   text-transform: uppercase;
 }
 
 .privacy-note__facts dd {
-  margin-block: var(--space-1) 0;
+  margin: 0.45rem 0 0;
   color: var(--color-ink);
   font-size: 0.82rem;
   font-weight: 720;
   font-variant-numeric: tabular-nums;
+  line-height: 1.25;
 }
 
 .workflow {

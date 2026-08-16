@@ -247,13 +247,13 @@ export default function HomePage() {
             <div className="masthead__copy">
               <p className="masthead__eyebrow">LOCAL DATA COMPARISON</p>
               <h1>
-                <span className="headline-line">두 파일의 차이를</span>
+                <span className="headline-line">원본은 그대로.</span>
                 <span className="headline-line">
-                  <span>명확하게</span>{' '}
-                  <span>확인하세요.</span>
+                  <span>차이만</span>{' '}
+                  <span>선명하게.</span>
                 </span>
               </h1>
-              <p>키 컬럼을 기준으로 Excel, CSV, TSV 데이터를 비교하고 결과를 원하는 형식으로 저장합니다.</p>
+              <p>키 컬럼을 기준으로 Excel, CSV, TSV 데이터를 비교하고 달라진 항목을 원하는 형식으로 저장하세요.</p>
               <div className="hero-actions">
                 <a className="button button--primary hero-cta" href="#upload">
                   <span>파일 선택 시작</span>
