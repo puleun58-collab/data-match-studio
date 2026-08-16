@@ -817,9 +817,9 @@ select[multiple] option {
 
 .setup-options {
   display: grid;
-  grid-template-columns: minmax(13rem, 0.68fr) minmax(26rem, 1.32fr);
-  gap: clamp(1.5rem, 4vw, 3.5rem);
-  max-width: 64rem;
+  grid-template-columns: minmax(14rem, 1fr) minmax(28rem, 1fr);
+  gap: clamp(2rem, 5vw, 4.5rem);
+  width: 100%;
   align-items: start;
 }
 
