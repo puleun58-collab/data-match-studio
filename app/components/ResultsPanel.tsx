@@ -31,6 +31,7 @@ export default function ResultsPanel({ result }: { result?: ComparisonResult }) 
   const firstBlank = blankRows.filter(row => row.aCount > 0).length;
   const secondBlank = blankRows.filter(row => row.bCount > 0).length;
   const matchRate = matched + mismatched ? matched / (matched + mismatched) * 100 : 0;
+  const otherDiagnostics = result.diagnostics.filter(diagnostic => diagnostic.code !== 'INVALID_KEY');
 
   return <section className="results-panel">
     <h2>Lane 비교 결과</h2>
@@ -39,6 +40,6 @@ export default function ResultsPanel({ result }: { result?: ComparisonResult }) 
     <div className="result-toolbar"><button onClick={() => downloadResultCsv(result)}>CSV 다운로드</button><button onClick={() => downloadResultJson(result)}>JSON 다운로드</button><button onClick={() => downloadResultXlsx(result)}>XLSX 다운로드</button><input placeholder="Lane 키 검색" value={query} onChange={event => setQuery(event.target.value)} /><select value={status} onChange={event => setStatus(event.target.value)}><option value="all">전체 상태</option>{Object.entries(statusLabels).filter(([value]) => value !== 'invalid-key').map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
     <div className="result-table-wrap"><table><thead><tr><th>Lane 키</th><th>일치 여부</th><th>첫째/둘째 행 수</th><th>첫 번째 시트 비교값</th><th>두 번째 시트 비교값</th></tr></thead><tbody>{rows.map((row, index) => <tr key={index}><td>{row.key.map(value => String(decodeScalar(value))).join(' / ')}</td><td>{statusLabels[row.status] ?? row.displayStatus}</td><td>{row.aCount}/{row.bCount}</td><td>{comparisonValues(row, 'A')}</td><td>{comparisonValues(row, 'B')}</td></tr>)}</tbody></table></div>
     {blankRows.length > 0 && <details className="blank-key-details"><summary>Lane 값이 없는 행 {blankRows.length}건 — 첫 번째 시트 {firstBlank}건 / 두 번째 시트 {secondBlank}건</summary><p>키가 없어 Lane 비교와 일치율 계산에서는 제외했습니다.</p><div className="result-table-wrap"><table><thead><tr><th>시트</th><th>Excel 행</th><th>선택한 비교값</th><th>사유</th></tr></thead><tbody>{blankRows.map((row, index) => { const side = row.aCount ? 'A' : 'B'; const rowIndex = side === 'A' ? row.provenance.leftRow : row.provenance.rightRow; return <tr key={index}><td>{side === 'A' ? '첫 번째 시트' : '두 번째 시트'}</td><td>{(rowIndex ?? 0) + 2}</td><td>{comparisonValues(row, side)}</td><td>선택한 Lane 키 컬럼이 비어 있음</td></tr>; })}</tbody></table></div></details>}
-    {result.diagnostics.length > 0 && <details><summary>기타 진단 메시지 {result.diagnostics.length}건</summary><ul>{result.diagnostics.map((diagnostic, index) => <li key={index}>{diagnostic.message}</li>)}</ul></details>}
+    {otherDiagnostics.length > 0 && <details><summary>기타 진단 메시지 {otherDiagnostics.length}건</summary><ul>{otherDiagnostics.map((diagnostic, index) => <li key={index}>{diagnostic.message}</li>)}</ul></details>}
   </section>;
 }
