@@ -22,7 +22,7 @@ async function inflate(data: Uint8Array, method: number, expectedSize: number, m
   if (method !== 8 || typeof DecompressionStream === 'undefined') {
     throw new Error('Deflate decompression unavailable');
   }
-  const stream = new Blob([data.buffer as ArrayBuffer]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
   const reader = stream.getReader(); const chunks: Uint8Array[] = []; let total = 0;
   while (true) { const part = await reader.read(); if (part.done) break; total += part.value.byteLength; if (total > maxOutput) { await reader.cancel(); throw new Error('ZIP_LIMIT'); } chunks.push(part.value); }
   if (expectedSize > maxOutput || (expectedSize > 0 && total !== expectedSize)) throw new Error('ZIP_LIMIT');
