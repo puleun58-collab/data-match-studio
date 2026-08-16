@@ -10,6 +10,7 @@
     {"command": "npm run typecheck", "exitCode": 0, "status": "passed", "evidence": "tsc --noEmit completed successfully."},
     {"command": "npm run build", "exitCode": 0, "status": "passed", "evidence": "Next.js static export generated / and /_not-found."},
     {"command": "cmd.exe /c \"C:\\Users\\soej7\\AppData\\Local\\Programs\\Python\\Python311\\python.exe -m streamlit run app.py --server.headless true --server.port 8512\" (20s bound)", "exitCode": null, "status": "passed", "evidence": "Uvicorn server started on :::8512 and reported http://localhost:8512 before bounded timeout."},
+    {"command": "PATH=C:\\Users\\soej7\\AppData\\Local\\Programs\\Python\\Python311\\Scripts;%PATH% && streamlit run app.py --server.headless true --server.port 8513 (20s bound)", "exitCode": null, "status": "passed", "evidence": "Exact Streamlit executable started Uvicorn on :::8513 and reported http://localhost:8513 before bounded timeout."},
     {"command": "npx tsx -e '<template remap and null-policy assertions>'", "exitCode": 0, "status": "passed", "evidence": "Stale template reference diagnosed and emptyEqualsZero null policy matched empty with numeric zero."}
   ],
   "contractCoverage": [
