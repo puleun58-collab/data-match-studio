@@ -135,7 +135,9 @@ export async function loadXlsx(input: Blob | ArrayBuffer | Uint8Array, options: 
     const sheetPath = relationshipMap.get(selected[2]);
     if (!sheetPath) return fail('UNSUPPORTED_FORMAT', 'Worksheet relationship is missing.');
     const shared = sharedStrings(await get('xl/sharedStrings.xml'));
-    const rows = parseWorksheet(await get(sheetPath), shared, options.rejectFormulas !== false, options.signal);
+    const worksheetXml = await get(sheetPath);
+    const formulaCount = (worksheetXml.match(/<f(?:\s|>)/g) ?? []).length;
+    const rows = parseWorksheet(worksheetXml, shared, options.rejectFormulas === true, options.signal);
     const limits = { ...DEFAULT_XLSX_LIMITS, ...options.limits };
     const headerOffset = options.headerOffset ?? 0;
     const dataStartRow = options.dataStartRow ?? headerOffset + 1;
@@ -149,7 +151,9 @@ export async function loadXlsx(input: Blob | ArrayBuffer | Uint8Array, options: 
       return value?.type === 'string' ? String(value.value ?? '') : String(value?.value ?? '');
     }));
     const data = rows.slice(dataStartRow).map((row) => Array.from({ length: width }, (_, index) => row[index] ?? encodeScalar(null)));
-    return { ok: true, value: { headers, rows: data, headerOffset, delimiter: '' } as Table, diagnostics: [], trace: [{ phase: 'parse', message: `Parsed ${data.length} data rows and ${headers.length} columns.` }] };
+    const trace = [{ phase: 'parse', message: `Parsed ${data.length} data rows and ${headers.length} columns.` }];
+    if (formulaCount) trace.push({ phase: 'formula-cache', message: `Read ${formulaCount} formula cells from their cached values; formulas are not evaluated in the browser.` });
+    return { ok: true, value: { headers, rows: data, headerOffset, delimiter: '' } as Table, diagnostics: [], trace };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message === 'CANCELLED') return fail('CANCELLED', 'Loading cancelled.');
