@@ -93,6 +93,9 @@ body {
   font-size: 1rem;
   font-weight: 440;
   line-height: 1.6;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  hyphens: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
@@ -567,7 +570,7 @@ h3 {
 
 .upload-panel__meta {
   margin-block: var(--space-5) 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
   color: var(--color-ink-muted);
   font-size: 0.88rem;
   font-variant-numeric: tabular-nums;
@@ -916,7 +919,7 @@ select[multiple] option {
   padding-inline: var(--space-2);
   font-size: 0.9rem;
   font-weight: 720;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
 }
 
 .rule-policy-editor__body {
