@@ -225,7 +225,7 @@ h3 {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-8);
-  padding: 0.45rem 0.55rem 0.45rem 0.65rem;
+  padding: 0.45rem 1rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--color-surface) 78%, transparent);
   box-shadow: var(--shadow-float), inset 0 0 0 1px var(--color-border), inset 0 1px 0 color-mix(in srgb, var(--color-surface-raised) 88%, transparent);
@@ -1367,7 +1367,7 @@ summary {
   .site-header__inner {
     width: calc(100% - 1.25rem);
     min-height: 3.75rem;
-    padding: 0.35rem 0.4rem 0.35rem 0.5rem;
+    padding: 0.35rem 0.625rem;
   }
 
   .brand {
