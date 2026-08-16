@@ -21,27 +21,27 @@ const duplicatePolicyHelp: Record<string, { title: string; description: string }
     description: '같은 키가 여러 행에 있으면 중복으로 표시하고 해당 키의 값은 비교하지 않습니다.',
   },
   first: {
-    title: '각 그룹의 첫 행 비교',
+    title: '같은 키의 첫 번째 행 기준',
     description: '각 파일에서 같은 키로 묶인 행 중 첫 번째 행만 비교하고 나머지 행은 제외합니다.',
   },
   last: {
-    title: '각 그룹의 마지막 행 비교',
+    title: '같은 키의 마지막 행 기준',
     description: '각 파일에서 같은 키로 묶인 행 중 마지막 행만 비교하고 나머지 행은 제외합니다.',
   },
   representative: {
-    title: '기준 컬럼이 가장 큰 행 비교',
+    title: '대표 행 기준',
     description: '선택한 기준 컬럼의 값이 가장 큰 행 한 건을 각 파일에서 골라 비교합니다.',
   },
   set: {
-    title: '중복 제거 후 값 목록 비교',
+    title: '고유값 기준',
     description: '값의 순서와 반복 횟수는 무시하고, 서로 다른 값의 종류가 같은지 비교합니다.',
   },
   multiset: {
-    title: '중복 횟수 포함 값 목록 비교',
+    title: '전체값 기준',
     description: '값의 순서는 무시하지만 같은 값이 몇 번 나타나는지까지 포함해 비교합니다.',
   },
   aggregate: {
-    title: '집계 결과 비교',
+    title: '집계값 기준',
     description: '같은 키의 모든 값을 합계, 평균, 개수 등으로 계산한 뒤 집계 결과를 비교합니다.',
   },
 };
@@ -356,18 +356,20 @@ export default function HomePage() {
                   </div>
 
                   <div className="setup-group">
-                    <div className="setup-group__title"><h3>키 일치와 중복 처리</h3><p>키의 대소문자 구분과 같은 키가 여러 행에 나타날 때 비교할 방법을 정하세요.</p></div>
+                    <div className="setup-group__title"><h3>중복 키 처리</h3><p>같은 키가 여러 행에 있을 때 값을 비교하는 기준을 선택하세요.</p></div>
                     <div className="setup-options">
                       <label className="checkbox-label" title="켜면 S001과 s001을 다른 키로 처리합니다."><input type="checkbox" checked={caseSensitive} onChange={event => setCaseSensitive(event.target.checked)} /> 키의 영문 대소문자 구분</label>
-                      <Field label="중복 키 비교 방법" htmlFor="duplicate-policy" hint="같은 키가 한쪽 또는 양쪽 파일에 여러 번 나타날 때 적용됩니다.">
-                        <select id="duplicate-policy" value={policy} aria-describedby="duplicate-policy-description" onChange={event => setPolicy(event.target.value)}>
-                          <option value="report">중복 여부만 표시</option>
-                          <option value="first">각 그룹의 첫 행 비교</option>
-                          <option value="last">각 그룹의 마지막 행 비교</option>
-                          <option value="representative">기준 컬럼이 가장 큰 행 비교</option>
-                          <option value="set">중복 제거 후 값 목록 비교</option>
-                          <option value="multiset">중복 횟수 포함 값 목록 비교</option>
-                          <option value="aggregate">집계 결과 비교</option>
+                      <Field label="중복 키 비교 기준" htmlFor="duplicate-policy" hint="같은 키가 한쪽 또는 양쪽 파일에 여러 번 나타날 때 적용됩니다.">
+                        <select id="duplicate-policy" value={policy} aria-describedby="duplicate-policy-description" onChange={event => { setPolicy(event.target.value); setResult(undefined); }}>
+                          <option value="report">중복만 확인</option>
+                          <option value="set">고유값 기준 (중복 횟수 제외)</option>
+                          <option value="multiset">전체값 기준 (중복 횟수 포함)</option>
+                          <option value="aggregate">집계값 기준</option>
+                          <optgroup label="고급 설정">
+                            <option value="representative">대표 행 기준</option>
+                          </optgroup>
+                          {policy === 'first' ? <option value="first">이전 설정: 같은 키의 첫 번째 행 기준</option> : null}
+                          {policy === 'last' ? <option value="last">이전 설정: 같은 키의 마지막 행 기준</option> : null}
                         </select>
                         <p className="policy-description" id="duplicate-policy-description">
                           <strong>{duplicatePolicyHelp[policy].title}</strong>
@@ -418,7 +420,7 @@ export default function HomePage() {
             )}
 
             <ProgressPanel progress={progress} onCancel={cancel} />
-            {!progress ? <ResultsPanel result={result} onRetry={run} isReady={canRun} /> : null}
+            {!progress ? <ResultsPanel result={result} onRetry={run} isReady={canRun} duplicatePolicy={policy} aggregationMethod={aggregationMethod} /> : null}
           </div>
 
           <footer className="site-footer">

@@ -23,11 +23,58 @@ function displayValue(value: unknown): string {
     : value === null ? '(빈 값)' : String(value);
 }
 
-function comparisonValues(resultRow: ComparisonResult['rows'][number], side: 'A' | 'B'): string {
-  const values = resultRow.trace
+function comparisonValues(
+  resultRow: ComparisonResult['rows'][number],
+  side: 'A' | 'B',
+  duplicatePolicy = 'set',
+  aggregationMethod: 'sum' | 'mean' | 'min' | 'max' | 'count' | 'nunique' | 'concat_unique' = 'sum',
+): string {
+  const selectedRow = side === 'A' ? resultRow.provenance.leftRow : resultRow.provenance.rightRow;
+  const traces = resultRow.trace
     .filter(item => item.side === side && item.ruleId !== 'row')
+    .filter(item => duplicatePolicy !== 'representative' || item.rowIndex === selectedRow);
+  const values = traces
     .flatMap(item => item.originalValues.map(value => decodeScalar(value)))
     .map(displayValue);
+
+  const valuesByRule = (normalized = false) => {
+    const grouped = new Map<string, unknown[]>();
+    traces.forEach(item => {
+      const current = grouped.get(item.ruleId) ?? [];
+      const source = normalized ? item.normalizedValues : item.originalValues;
+      current.push(...source.map(value => decodeScalar(value)));
+      grouped.set(item.ruleId, current);
+    });
+    return [...grouped.values()];
+  };
+
+  if (duplicatePolicy === 'multiset') {
+    return valuesByRule().map(ruleValues => {
+      const counts = new Map<string, number>();
+      ruleValues.map(displayValue).forEach(value => counts.set(value, (counts.get(value) ?? 0) + 1));
+      return [...counts].map(([value, count]) => `${value} × ${count.toLocaleString('ko-KR')}`).join(', ');
+    }).filter(Boolean).join(' / ') || '-';
+  }
+
+  if (duplicatePolicy === 'aggregate') {
+    return valuesByRule(true).map(ruleValues => {
+      const normalizedValues = ruleValues.filter(value => value !== null && value !== '');
+      if (aggregationMethod === 'count') return `${normalizedValues.length.toLocaleString('ko-KR')}건`;
+      if (aggregationMethod === 'nunique') return `${new Set(normalizedValues.map(value => String(value))).size.toLocaleString('ko-KR')}개`;
+      if (aggregationMethod === 'concat_unique') return [...new Set(normalizedValues.map(displayValue))].join(', ') || '-';
+      const numbers = normalizedValues.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+      if (!numbers.length || numbers.length !== normalizedValues.length) return '계산할 수 없음';
+      const aggregate = aggregationMethod === 'mean'
+        ? numbers.reduce((sum, value) => sum + value, 0) / numbers.length
+        : aggregationMethod === 'min'
+          ? Math.min(...numbers)
+          : aggregationMethod === 'max'
+            ? Math.max(...numbers)
+            : numbers.reduce((sum, value) => sum + value, 0);
+      return displayValue(aggregate);
+    }).join(' / ') || '-';
+  }
+
   return [...new Set(values)].join(', ') || '-';
 }
 
@@ -35,9 +82,11 @@ type Props = {
   result?: ComparisonResult;
   onRetry: () => void;
   isReady: boolean;
+  duplicatePolicy?: string;
+  aggregationMethod?: 'sum' | 'mean' | 'min' | 'max' | 'count' | 'nunique' | 'concat_unique';
 };
 
-export default function ResultsPanel({ result, onRetry, isReady }: Props) {
+export default function ResultsPanel({ result, onRetry, isReady, duplicatePolicy = 'set', aggregationMethod = 'sum' }: Props) {
   const [status, setStatus] = useState('all');
   const [query, setQuery] = useState('');
   const queryId = useId();
@@ -155,8 +204,8 @@ export default function ResultsPanel({ result, onRetry, isReady }: Props) {
                           <th scope="row">{row.key.map(value => String(decodeScalar(value))).join(' / ')}</th>
                           <td><span className={`status-badge status-badge--${row.status}`}>{statusLabels[row.status] ?? row.displayStatus}</span></td>
                           <td>첫 시트 {row.aCount.toLocaleString('ko-KR')}건 / 두 번째 시트 {row.bCount.toLocaleString('ko-KR')}건</td>
-                          <td>{comparisonValues(row, 'A')}</td>
-                          <td>{comparisonValues(row, 'B')}</td>
+                          <td>{comparisonValues(row, 'A', duplicatePolicy, aggregationMethod)}</td>
+                          <td>{comparisonValues(row, 'B', duplicatePolicy, aggregationMethod)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -188,7 +237,7 @@ export default function ResultsPanel({ result, onRetry, isReady }: Props) {
                     {blankRows.map((row, index) => {
                       const side = row.aCount ? 'A' : 'B';
                       const rowIndex = side === 'A' ? row.provenance.leftRow : row.provenance.rightRow;
-                      return <tr key={index}><td>{side === 'A' ? '첫 번째 시트' : '두 번째 시트'}</td><td>{(rowIndex ?? 0) + 2}</td><td>{comparisonValues(row, side)}</td><td>선택한 Lane 키 컬럼이 비어 있음</td></tr>;
+                      return <tr key={index}><td>{side === 'A' ? '첫 번째 시트' : '두 번째 시트'}</td><td>{(rowIndex ?? 0) + 2}</td><td>{comparisonValues(row, side, duplicatePolicy, aggregationMethod)}</td><td>선택한 Lane 키 컬럼이 비어 있음</td></tr>;
                     })}
                   </tbody>
                 </table>

@@ -727,7 +727,7 @@ select[multiple] option {
 }
 
 .setup-group {
-  padding-block: clamp(2rem, 4vw, 3.25rem);
+  padding-block: clamp(1.5rem, 3vw, 2.25rem);
   border-block-start: 1px solid var(--color-border);
 }
 
@@ -799,8 +799,10 @@ select[multiple] option {
 
 .setup-options {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-5);
+  grid-template-columns: minmax(13rem, 0.68fr) minmax(26rem, 1.32fr);
+  gap: clamp(1.5rem, 4vw, 3.5rem);
+  max-width: 64rem;
+  align-items: start;
 }
 
 .checkbox-label {
@@ -822,7 +824,7 @@ select[multiple] option {
 
 .rule-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr));
   gap: var(--space-4);
   margin-block-start: var(--space-6);
 }
@@ -847,7 +849,19 @@ select[multiple] option {
 
 .rule-policy-editor__body {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
+}
+
+.rule-policy-editor__checks,
+.rule-policy-editor__body > details {
+  grid-column: 1 / -1;
+}
+
+.rule-policy-editor__checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-8);
 }
 
 .rule-policy-editor label {
@@ -1342,6 +1356,10 @@ summary {
   .setup-options,
   .rule-grid,
   .summary-primary {
+    grid-template-columns: 1fr;
+  }
+
+  .rule-policy-editor__body {
     grid-template-columns: 1fr;
   }
 

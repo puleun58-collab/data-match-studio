@@ -31,11 +31,13 @@ export default function RulePolicyEditor({ column, pairedColumn, rule, defaultPo
             <option value="boolean">참/거짓</option>
           </select>
         </label>
-        <label><input type="checkbox" checked={policy.bothEmptyEqual !== false} onChange={event => updatePolicy({ bothEmptyEqual: event.target.checked })} /> 양쪽 모두 빈 값이면 동일</label>
-        <label><input type="checkbox" checked={policy.oneEmptyMismatch !== false} onChange={event => updatePolicy({ oneEmptyMismatch: event.target.checked })} /> 한쪽만 빈 값이면 불일치</label>
         <label htmlFor={missingId}>빈 값으로 인식할 문자
           <input id={missingId} value={(policy.missingTokens ?? []).join(', ')} placeholder="-, N/A, NULL, 없음" onChange={event => updatePolicy({ missingTokens: event.target.value.split(',').map(token => token.trim().toLocaleLowerCase()).filter(Boolean) })} />
         </label>
+        <div className="rule-policy-editor__checks">
+          <label><input type="checkbox" checked={policy.bothEmptyEqual !== false} onChange={event => updatePolicy({ bothEmptyEqual: event.target.checked })} /> 양쪽 모두 빈 값이면 동일</label>
+          <label><input type="checkbox" checked={policy.oneEmptyMismatch !== false} onChange={event => updatePolicy({ oneEmptyMismatch: event.target.checked })} /> 한쪽만 빈 값이면 불일치</label>
+        </div>
         <details>
           <summary>고급 빈 값 설정</summary>
           {dataType === 'number' ? <label><input type="checkbox" checked={policy.emptyEqualsZero === true} onChange={event => updatePolicy({ emptyEqualsZero: event.target.checked })} /> 빈 값을 숫자 0으로 처리</label> : null}
