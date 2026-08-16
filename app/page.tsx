@@ -1,68 +1,375 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
-import UploadPanel from './components/UploadPanel';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ProgressPanel from './components/ProgressPanel';
 import ResultsPanel from './components/ResultsPanel';
 import RulePolicyEditor from './components/RulePolicyEditor';
 import SearchableColumnSelect from './components/SearchableColumnSelect';
+import UploadPanel, { type UploadValue } from './components/UploadPanel';
+import { Button, Container, Field, Form, Heading, Section, StateMessage } from './components/ui';
 import { loadCsv } from '../web/src/loaders/csvLoader';
 import { listXlsxSheets, loadXlsx } from '../web/src/loaders/xlsxLoader';
-import type { Table } from '../web/src/engine/contracts';
 import type { ComparisonConfig, ComparisonResult, ComparisonRule } from '../web/src/engine/comparisonEngine';
 import type { WorkerResponse } from '../web/src/workers/workerProtocol';
 import { remapConfig, type BrowserTemplateV2 } from '../web/src/templates/remap';
 
-type BrowserFileState = { file: File; table?: Table; error?: string; sheets?: string[]; sheetName?: string };
+type TemplateMessage = { tone: 'success' | 'error'; text: string };
+
+const emptyResult = (diagnostics: { code: string; message: string }[]): ComparisonResult => ({
+  rows: [],
+  diagnostics,
+  summary: {
+    total: 0,
+    comparable: 0,
+    identical: 0,
+    mismatch: 0,
+    aOnly: 0,
+    bOnly: 0,
+    duplicate: 0,
+    conversionFailed: 0,
+    nmPending: 0,
+    matchRate: 0,
+  },
+});
 
 export default function HomePage() {
-  const [left, setLeft] = useState<BrowserFileState>();
-  const [right, setRight] = useState<BrowserFileState>();
-  const [keys, setKeys] = useState<string[]>([]); const [keysB, setKeysB] = useState<string[]>([]); const [compare, setCompare] = useState<string[]>([]); const [compareB, setCompareB] = useState<string[]>([]); const [rules, setRules] = useState<ComparisonRule[]>([]); const [representativeColumn, setRepresentativeColumn] = useState<string>();
+  const [left, setLeft] = useState<UploadValue>();
+  const [right, setRight] = useState<UploadValue>();
+  const [keys, setKeys] = useState<string[]>([]);
+  const [keysB, setKeysB] = useState<string[]>([]);
+  const [compare, setCompare] = useState<string[]>([]);
+  const [compareB, setCompareB] = useState<string[]>([]);
+  const [rules, setRules] = useState<ComparisonRule[]>([]);
+  const [representativeColumn, setRepresentativeColumn] = useState<string>();
   const [aggregationMethod, setAggregationMethod] = useState<ComparisonRule['aggregationMethod']>('sum');
   const [nullPolicy, setNullPolicy] = useState<NonNullable<ComparisonRule['nullPolicy']>>({ bothEmptyEqual: true, oneEmptyMismatch: true, emptyEqualsZero: false });
-  const [caseSensitive, setCaseSensitive] = useState(true); const [policy, setPolicy] = useState('set');
-  const [result, setResult] = useState<ComparisonResult>(); const [progress, setProgress] = useState<{ completed: number; total: number }>();
-  const worker = useRef<Worker | null>(null); const request = useRef('');
+  const [caseSensitive, setCaseSensitive] = useState(true);
+  const [policy, setPolicy] = useState('set');
+  const [result, setResult] = useState<ComparisonResult>();
+  const [progress, setProgress] = useState<{ completed: number; total: number }>();
+  const [templateMessage, setTemplateMessage] = useState<TemplateMessage>();
+  const worker = useRef<Worker | null>(null);
+  const request = useRef('');
+
   const leftHeaders = useMemo(() => left?.table?.headers ?? [], [left]);
   const rightHeaders = useMemo(() => right?.table?.headers ?? [], [right]);
   const headers = useMemo(() => [...new Set([...leftHeaders, ...rightHeaders])], [leftHeaders, rightHeaders]);
-  const emptyResult = (diagnostics: { code: string; message: string }[]): ComparisonResult => ({ rows: [], diagnostics, summary: { total: 0, comparable: 0, identical: 0, mismatch: 0, aOnly: 0, bOnly: 0, duplicate: 0, conversionFailed: 0, nmPending: 0, matchRate: 0 } });
-  async function readFile(file: File, sheetName?: string) {
+  const selectionsMatch = keys.length === keysB.length && compare.length === compareB.length;
+  const canRun = Boolean(left?.table && right?.table && keys.length && selectionsMatch && !progress);
+
+  useEffect(() => () => worker.current?.terminate(), []);
+
+  async function readFile(file: File, sheetName?: string): Promise<UploadValue> {
     try {
       const lower = file.name.toLowerCase();
-      if (lower.endsWith('.xls')) return { file, error: 'Legacy .xls files are not supported in the browser. Use the local Python/Streamlit path or convert to XLSX.' };
-      if (lower.endsWith('.xlsm')) return { file, error: 'Macro-enabled XLSM files are not supported in the browser. Use the local Python/Streamlit path with macro execution disabled.' };
+      if (lower.endsWith('.xls')) return { file, status: 'error', error: 'Legacy .xls files are not supported in the browser. Use the local Python/Streamlit path or convert to XLSX.' };
+      if (lower.endsWith('.xlsm')) return { file, status: 'error', error: 'Macro-enabled XLSM files are not supported in the browser. Use the local Python/Streamlit path with macro execution disabled.' };
       if (lower.endsWith('.xlsx')) {
         const sheetList = await listXlsxSheets(file);
-        if (!sheetList.ok) return { file, error: sheetList.diagnostics.map(d => `${d.code}: ${d.message}`).join('\n') };
+        if (!sheetList.ok) return { file, status: 'error', error: sheetList.diagnostics.map(diagnostic => `${diagnostic.code}: ${diagnostic.message}`).join('\n') };
         const selectedSheet = sheetName ?? sheetList.sheets[0];
         const parsed = await loadXlsx(file, { sheetName: selectedSheet });
-        if (!parsed.ok) return { file, sheets: sheetList.sheets, sheetName: selectedSheet, error: parsed.diagnostics.map(d => `${d.code}: ${d.message}`).join('\n') };
-        return { file, sheets: sheetList.sheets, sheetName: selectedSheet, table: parsed.value };
+        if (!parsed.ok) return { file, status: 'error', sheets: sheetList.sheets, sheetName: selectedSheet, error: parsed.diagnostics.map(diagnostic => `${diagnostic.code}: ${diagnostic.message}`).join('\n') };
+        return { file, status: 'success', sheets: sheetList.sheets, sheetName: selectedSheet, table: parsed.value };
       }
-      const parsed = lower.endsWith('.xlsm') ? await loadXlsx(file) : loadCsv(new Uint8Array(await file.arrayBuffer()), { format: lower.endsWith('.tsv') ? 'tsv' : 'csv' });
-      if (!parsed.ok) return { file, error: parsed.diagnostics.map(d => `${d.code}: ${d.message}`).join('\n') };
-      return { file, table: parsed.value };
-    } catch (e) { return { file, error: e instanceof Error ? e.message : String(e) }; }
+      const parsed = loadCsv(new Uint8Array(await file.arrayBuffer()), { format: lower.endsWith('.tsv') ? 'tsv' : 'csv' });
+      if (!parsed.ok) return { file, status: 'error', error: parsed.diagnostics.map(diagnostic => `${diagnostic.code}: ${diagnostic.message}`).join('\n') };
+      return { file, status: 'success', table: parsed.value };
+    } catch (error) {
+      return { file, status: 'error', error: error instanceof Error ? error.message : String(error) };
+    }
   }
-  async function choose(side: 'left' | 'right', file?: File) { if (!file) return; const value = await readFile(file); if (side === 'left') { setLeft(value); setKeys([]); setCompare([]); } else { setRight(value); setKeysB([]); setCompareB([]); } setRules([]); setResult(undefined); }
-  async function chooseSheet(side: 'left' | 'right', sheetName: string) { const current = side === 'left' ? left : right; if (!current) return; const value = await readFile(current.file, sheetName); if (side === 'left') { setLeft(value); setKeys([]); setCompare([]); } else { setRight(value); setKeysB([]); setCompareB([]); } setRules([]); setResult(undefined); }
+
+  function clearSideSelection(side: 'left' | 'right') {
+    if (side === 'left') {
+      setKeys([]);
+      setCompare([]);
+    } else {
+      setKeysB([]);
+      setCompareB([]);
+    }
+    setRules([]);
+    setResult(undefined);
+    setTemplateMessage(undefined);
+  }
+
+  async function choose(side: 'left' | 'right', file?: File) {
+    if (!file) return;
+    const loadingValue: UploadValue = { file, status: 'loading' };
+    if (side === 'left') setLeft(loadingValue);
+    else setRight(loadingValue);
+    clearSideSelection(side);
+    const value = await readFile(file);
+    if (side === 'left') setLeft(value);
+    else setRight(value);
+  }
+
+  async function chooseSheet(side: 'left' | 'right', sheetName: string) {
+    const current = side === 'left' ? left : right;
+    if (!current) return;
+    const loadingValue: UploadValue = { ...current, table: undefined, error: undefined, sheetName, status: 'loading' };
+    if (side === 'left') setLeft(loadingValue);
+    else setRight(loadingValue);
+    clearSideSelection(side);
+    const value = await readFile(current.file, sheetName);
+    if (side === 'left') setLeft(value);
+    else setRight(value);
+  }
+
   function run() {
-    if (!left?.table || !right?.table || !keys.length || keys.length !== keysB.length || compare.length !== compareB.length) return;
-    const id = crypto.randomUUID(); request.current = id; worker.current?.terminate(); worker.current = new Worker(new URL('../web/src/workers/compare.worker.ts', import.meta.url));
-    worker.current.onmessage = (event: MessageEvent<WorkerResponse>) => { const m = event.data; if (m.requestId !== id) return; if (m.type === 'progress') setProgress({ completed: m.completed, total: m.total }); else if (m.type === 'result') { setResult(m.result); setProgress(undefined); } else if (m.type === 'error') { setResult(emptyResult([{ code: m.code ?? 'COMPARE_FAILED', message: m.message }])); setProgress(undefined); } };
+    if (!left?.table || !right?.table || !keys.length || !selectionsMatch || progress) return;
+    const id = crypto.randomUUID();
+    request.current = id;
+    worker.current?.terminate();
+    worker.current = new Worker(new URL('../web/src/workers/compare.worker.ts', import.meta.url));
+    worker.current.onmessage = (event: MessageEvent<WorkerResponse>) => {
+      const message = event.data;
+      if (message.requestId !== id) return;
+      if (message.type === 'progress') setProgress({ completed: message.completed, total: message.total });
+      else if (message.type === 'result') {
+        setResult(message.result);
+        setProgress(undefined);
+      } else if (message.type === 'error') {
+        setResult(emptyResult([{ code: message.code ?? 'COMPARE_FAILED', message: message.message }]));
+        setProgress(undefined);
+      }
+    };
+    worker.current.onerror = () => {
+      setResult(emptyResult([{ code: 'WORKER_FAILED', message: '비교 작업을 시작하지 못했습니다. 다시 시도하세요.' }]));
+      setProgress(undefined);
+    };
+    setResult(undefined);
     setProgress({ completed: 0, total: left.table.rows.length + right.table.rows.length });
     const effectiveRules = rules.length ? rules : compare.map((column, index) => ({ id: `rule-${index + 1}`, columnA: column, columnB: compareB[index], aggregationMethod, nullPolicy }));
-    const config: ComparisonConfig = { keyColumns: keys, keyColumnsB: keysB, compareColumns: compare.length ? compare : undefined, rules: effectiveRules, representativeColumn: representativeColumn ?? compare[0], caseSensitive, duplicatePolicy: policy as ComparisonConfig['duplicatePolicy'], nmPolicy: policy as ComparisonConfig['nmPolicy'] };
+    const config: ComparisonConfig = {
+      keyColumns: keys,
+      keyColumnsB: keysB,
+      compareColumns: compare.length ? compare : undefined,
+      rules: effectiveRules,
+      representativeColumn: representativeColumn ?? compare[0],
+      caseSensitive,
+      duplicatePolicy: policy as ComparisonConfig['duplicatePolicy'],
+      nmPolicy: policy as ComparisonConfig['nmPolicy'],
+    };
     worker.current.postMessage({ type: 'compare', requestId: id, left: left.table, right: right.table, config });
   }
-  function cancel() { if (request.current) worker.current?.postMessage({ type: 'cancel', requestId: request.current }); worker.current?.terminate(); worker.current = null; request.current = ''; setProgress(undefined); }
-  function template() { const occurrences = new Map<string, number>(); const expectations = headers.map((id, index) => { const normalizedName = id.trim().toLocaleLowerCase(); const occurrence = occurrences.get(normalizedName) ?? 0; occurrences.set(normalizedName, occurrence + 1); return { side: 'both' as const, index, id, raw: id, display: id, normalizedName, sheet: null, fingerprint: `${normalizedName}:${occurrence}`, occurrence }; }); const effectiveRules = rules.length ? rules : compare.map((column, index) => ({ id: `rule-${index + 1}`, columnA: column, columnB: compareB[index], dataType: 'text' as const, aggregationMethod, nullPolicy })); const value: BrowserTemplateV2 = { version: 2, expectations, keyColumns: keys, compareColumns: compare, rules: effectiveRules, representativeColumn, caseSensitive, duplicatePolicy: policy }; const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'data-match-template-v2.json'; a.click(); URL.revokeObjectURL(a.href); }
-  function importTemplate(file?: File) { if (!file) return; file.text().then(t => { try { const x = JSON.parse(t) as BrowserTemplateV2; const remapped = remapConfig(headers, x); if (remapped.diagnostics.length || !remapped.config) { setResult(emptyResult(remapped.diagnostics.map(d => ({ code: d.code, message: d.message })))); return; } setKeys(remapped.config.keyColumns.map(String)); setKeysB(remapped.config.keyColumns.map(String)); setCompare(remapped.config.compareColumns.map(String)); setCompareB(remapped.config.rules.map(rule => String(rule.columnB))); setRules(remapped.config.rules); setAggregationMethod(remapped.config.rules[0]?.aggregationMethod ?? 'sum'); setNullPolicy(remapped.config.rules[0]?.nullPolicy ?? nullPolicy); setRepresentativeColumn(remapped.config.representativeColumn === undefined ? undefined : String(remapped.config.representativeColumn)); setCaseSensitive(remapped.config.caseSensitive); setPolicy(remapped.config.duplicatePolicy); } catch { setResult(emptyResult([{ code: 'INVALID_TEMPLATE', message: 'Template is not valid JSON.' }])); } }); }
-  function editRule(column: string, patch: Partial<ComparisonRule>) { setRules(previous => { const base = previous.length ? previous : compare.map((name, index) => ({ id: `rule-${index + 1}`, columnA: name, columnB: compareB[index] ?? name })); return base.map(rule => String(rule.columnA) === column ? { ...rule, ...patch } : rule); }); }
-  return <main><h1>Data Match Studio</h1><p>Compare files locally in your browser. File bytes never leave this page.</p>
-    <UploadPanel side="left" value={left} onChange={f => choose('left', f)} onSheetChange={sheet => chooseSheet('left', sheet)} /><UploadPanel side="right" value={right} onChange={f => choose('right', f)} onSheetChange={sheet => chooseSheet('right', sheet)} />
-    {headers.length > 0 && <section className="comparison-setup"><h2>3. 비교 설정 (Comparison setup)</h2><p>각 시트에서 서로 대응하는 키 컬럼과 비교 컬럼을 같은 개수·같은 순서로 선택하세요. 여러 항목은 Ctrl 또는 Cmd를 누른 채 선택합니다.</p>{(keys.length !== keysB.length || compare.length !== compareB.length) && <p role="alert">첫 번째 시트와 두 번째 시트의 선택 개수를 맞춰주세요. 현재 키 {keys.length}:{keysB.length}, 비교 {compare.length}:{compareB.length}</p>}<SearchableColumnSelect label="1-A) 첫 번째 시트 키 컬럼" options={leftHeaders} value={keys} onChange={setKeys} /><SearchableColumnSelect label="1-B) 두 번째 시트 키 컬럼" options={rightHeaders} value={keysB} onChange={setKeysB} /><SearchableColumnSelect label="2-A) 첫 번째 시트 비교 컬럼" options={leftHeaders} value={compare} onChange={value => { setCompare(value); setRules([]); }} /><SearchableColumnSelect label="2-B) 두 번째 시트 비교 컬럼" options={rightHeaders} value={compareB} onChange={value => { setCompareB(value); setRules([]); }} />{policy === 'representative' && <label>대표 행 기준 컬럼 <select value={representativeColumn ?? ''} onChange={e => setRepresentativeColumn(e.target.value || undefined)}><option value="">첫 번째 행 사용</option>{leftHeaders.map(h => <option key={h}>{h}</option>)}</select></label>}{policy === 'aggregate' && <label>중복 행 집계 방식 <select value={aggregationMethod} onChange={e => setAggregationMethod(e.target.value as ComparisonRule['aggregationMethod'])}><option value="sum">Sum</option><option value="mean">Mean</option><option value="min">Minimum</option><option value="max">Maximum</option><option value="count">Count</option><option value="nunique">Unique count</option><option value="concat_unique">Concatenate unique</option></select></label>}{compare.map((column, index) => { const rule = rules.find(item => String(item.columnA) === column); return <RulePolicyEditor key={`rule-${column}`} column={column} pairedColumn={compareB[index]} rule={rule} defaultPolicy={nullPolicy} onChange={patch => editRule(column, patch)} />; })}<label className="checkbox-label" title="켜면 S001과 s001을 다른 키로 처리합니다."><input type="checkbox" checked={caseSensitive} onChange={e => setCaseSensitive(e.target.checked)} /> 키의 영문 대소문자 구분</label><label>중복 키/N:M 처리 방식 <select value={policy} onChange={e => setPolicy(e.target.value)}><option value="report">중복 현황만 확인 (값 비교 안 함)</option><option value="first">첫 번째 행 사용</option><option value="last">마지막 행 사용</option><option value="representative">대표 행 사용</option><option value="set">집합으로 비교</option><option value="multiset">멀티셋으로 비교</option><option value="aggregate">집계값으로 비교</option></select></label><button onClick={run} disabled={!left?.table || !right?.table || !keys.length || keys.length !== keysB.length || compare.length !== compareB.length}>브라우저에서 비교 실행</button><button onClick={template}>설정 템플릿 저장</button><label>설정 템플릿 불러오기 <input type="file" accept="application/json" onChange={e => importTemplate(e.target.files?.[0])} /></label></section>}
-    <ProgressPanel progress={progress} onCancel={cancel} /><ResultsPanel result={result} /></main>;
+
+  function cancel() {
+    if (request.current) worker.current?.postMessage({ type: 'cancel', requestId: request.current });
+    worker.current?.terminate();
+    worker.current = null;
+    request.current = '';
+    setProgress(undefined);
+  }
+
+  function saveTemplate() {
+    const occurrences = new Map<string, number>();
+    const expectations = headers.map((id, index) => {
+      const normalizedName = id.trim().toLocaleLowerCase();
+      const occurrence = occurrences.get(normalizedName) ?? 0;
+      occurrences.set(normalizedName, occurrence + 1);
+      return { side: 'both' as const, index, id, raw: id, display: id, normalizedName, sheet: null, fingerprint: `${normalizedName}:${occurrence}`, occurrence };
+    });
+    const effectiveRules = rules.length ? rules : compare.map((column, index) => ({ id: `rule-${index + 1}`, columnA: column, columnB: compareB[index], dataType: 'text' as const, aggregationMethod, nullPolicy }));
+    const value: BrowserTemplateV2 = { version: 2, expectations, keyColumns: keys, compareColumns: compare, rules: effectiveRules, representativeColumn, caseSensitive, duplicatePolicy: policy };
+    const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'data-match-template-v2.json';
+    link.click();
+    URL.revokeObjectURL(link.href);
+    setTemplateMessage({ tone: 'success', text: '현재 비교 설정을 JSON 템플릿으로 저장했습니다.' });
+  }
+
+  async function importTemplate(file?: File) {
+    if (!file) return;
+    try {
+      const value = JSON.parse(await file.text()) as BrowserTemplateV2;
+      const remapped = remapConfig(headers, value);
+      if (remapped.diagnostics.length || !remapped.config) {
+        setResult(emptyResult(remapped.diagnostics.map(diagnostic => ({ code: diagnostic.code, message: diagnostic.message }))));
+        setTemplateMessage({ tone: 'error', text: '템플릿 컬럼을 현재 파일에 연결하지 못했습니다.' });
+        return;
+      }
+      setKeys(remapped.config.keyColumns.map(String));
+      setKeysB(remapped.config.keyColumns.map(String));
+      setCompare(remapped.config.compareColumns.map(String));
+      setCompareB(remapped.config.rules.map(rule => String(rule.columnB)));
+      setRules(remapped.config.rules);
+      setAggregationMethod(remapped.config.rules[0]?.aggregationMethod ?? 'sum');
+      setNullPolicy(remapped.config.rules[0]?.nullPolicy ?? nullPolicy);
+      setRepresentativeColumn(remapped.config.representativeColumn === undefined ? undefined : String(remapped.config.representativeColumn));
+      setCaseSensitive(remapped.config.caseSensitive);
+      setPolicy(remapped.config.duplicatePolicy);
+      setTemplateMessage({ tone: 'success', text: '템플릿 설정을 현재 파일에 적용했습니다.' });
+    } catch {
+      setResult(emptyResult([{ code: 'INVALID_TEMPLATE', message: 'Template is not valid JSON.' }]));
+      setTemplateMessage({ tone: 'error', text: '올바른 JSON 템플릿 파일을 선택하세요.' });
+    }
+  }
+
+  function editRule(column: string, patch: Partial<ComparisonRule>) {
+    setRules(previous => {
+      const base = previous.length ? previous : compare.map((name, index) => ({ id: `rule-${index + 1}`, columnA: name, columnB: compareB[index] ?? name }));
+      return base.map(rule => String(rule.columnA) === column ? { ...rule, ...patch } : rule);
+    });
+  }
+
+  const disabledReason = !left?.table || !right?.table
+    ? '두 파일을 모두 선택하면 비교를 실행할 수 있습니다.'
+    : !keys.length
+      ? '각 파일에서 키 컬럼을 하나 이상 선택하세요.'
+      : !selectionsMatch
+        ? `양쪽 선택 개수를 맞추세요. 키 ${keys.length}:${keysB.length}, 비교 ${compare.length}:${compareB.length}`
+        : progress
+          ? '현재 비교가 진행 중입니다.'
+          : '';
+
+  return (
+    <>
+      <header className="site-header">
+        <Container className="site-header__inner">
+          <a className="brand" href="#top" aria-label="Data Match Studio 홈">
+            <span className="brand__mark" aria-hidden="true">DM</span>
+            <span>Data Match Studio</span>
+          </a>
+          <nav className="primary-nav" aria-label="작업 단계">
+            <a href="#upload">파일 선택</a>
+            <a href="#comparison-setup">비교 설정</a>
+            <a href="#results">결과</a>
+          </nav>
+        </Container>
+      </header>
+
+      <main id="main-content">
+        <Container>
+          <div className="masthead" id="top">
+            <div className="masthead__copy">
+              <p className="masthead__eyebrow">LOCAL DATA COMPARISON</p>
+              <h1>두 파일의 차이를<br />명확하게 확인하세요.</h1>
+              <p>키 컬럼을 기준으로 Excel, CSV, TSV 데이터를 비교하고 결과를 원하는 형식으로 저장합니다.</p>
+            </div>
+            <aside className="privacy-note" aria-label="로컬 처리 안내">
+              <strong>브라우저 안에서만 처리</strong>
+              <span>파일 데이터는 이 페이지 밖으로 전송되거나 서버에 저장되지 않습니다.</span>
+            </aside>
+          </div>
+
+          <div className="workflow">
+            <Section id="upload" tone="muted" aria-labelledby="upload-title">
+              <div className="section-heading">
+                <Heading level={2} description="비교할 두 파일을 선택하세요. 서로 다른 파일 형식을 함께 사용할 수 있습니다.">
+                  <span id="upload-title">파일 선택</span>
+                </Heading>
+              </div>
+              <div className="upload-grid">
+                <UploadPanel side="left" value={left} onChange={file => choose('left', file)} onSheetChange={sheet => chooseSheet('left', sheet)} onRetry={() => left && choose('left', left.file)} />
+                <UploadPanel side="right" value={right} onChange={file => choose('right', file)} onSheetChange={sheet => chooseSheet('right', sheet)} onRetry={() => right && choose('right', right.file)} />
+              </div>
+            </Section>
+
+            {headers.length > 0 ? (
+              <Section id="comparison-setup" className="comparison-setup" tone="surface" aria-labelledby="setup-title">
+                <div className="section-heading">
+                  <Heading level={2} description="서로 대응하는 키와 비교 컬럼을 같은 개수, 같은 순서로 선택하세요.">
+                    <span id="setup-title">비교 설정</span>
+                  </Heading>
+                </div>
+
+                <Form onSubmit={event => { event.preventDefault(); run(); }}>
+                  {!selectionsMatch ? (
+                    <StateMessage title="선택 개수를 맞춰주세요" tone="warning" role="alert">
+                      현재 키 {keys.length}:{keysB.length}, 비교 {compare.length}:{compareB.length}입니다.
+                    </StateMessage>
+                  ) : null}
+
+                  <div className="setup-group">
+                    <div className="setup-group__title"><h3>키 컬럼</h3><p>각 행을 연결할 기준입니다. 복합 키는 같은 순서로 선택하세요.</p></div>
+                    <div className="column-pair-grid">
+                      <SearchableColumnSelect label="첫 번째 시트 키 컬럼" options={leftHeaders} value={keys} onChange={setKeys} />
+                      <SearchableColumnSelect label="두 번째 시트 키 컬럼" options={rightHeaders} value={keysB} onChange={setKeysB} />
+                    </div>
+                  </div>
+
+                  <div className="setup-group">
+                    <div className="setup-group__title"><h3>비교 컬럼</h3><p>값의 일치 여부를 확인할 컬럼입니다. 선택하지 않으면 키와 존재 여부만 비교합니다.</p></div>
+                    <div className="column-pair-grid">
+                      <SearchableColumnSelect label="첫 번째 시트 비교 컬럼" options={leftHeaders} value={compare} onChange={value => { setCompare(value); setRules([]); }} />
+                      <SearchableColumnSelect label="두 번째 시트 비교 컬럼" options={rightHeaders} value={compareB} onChange={value => { setCompareB(value); setRules([]); }} />
+                    </div>
+                    {compare.length > 0 ? (
+                      <div className="rule-grid">
+                        {compare.map((column, index) => {
+                          const rule = rules.find(item => String(item.columnA) === column);
+                          return <RulePolicyEditor key={`rule-${column}`} column={column} pairedColumn={compareB[index]} rule={rule} defaultPolicy={nullPolicy} onChange={patch => editRule(column, patch)} />;
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="setup-group">
+                    <div className="setup-group__title"><h3>중복과 키 정책</h3><p>대소문자와 중복 키를 처리할 방법을 선택하세요.</p></div>
+                    <div className="setup-options">
+                      <label className="checkbox-label" title="켜면 S001과 s001을 다른 키로 처리합니다."><input type="checkbox" checked={caseSensitive} onChange={event => setCaseSensitive(event.target.checked)} /> 키의 영문 대소문자 구분</label>
+                      <Field label="중복 키/N:M 처리 방식" htmlFor="duplicate-policy">
+                        <select id="duplicate-policy" value={policy} onChange={event => setPolicy(event.target.value)}>
+                          <option value="report">중복 현황만 확인 (값 비교 안 함)</option>
+                          <option value="first">첫 번째 행 사용</option>
+                          <option value="last">마지막 행 사용</option>
+                          <option value="representative">대표 행 사용</option>
+                          <option value="set">집합으로 비교</option>
+                          <option value="multiset">멀티셋으로 비교</option>
+                          <option value="aggregate">집계값으로 비교</option>
+                        </select>
+                      </Field>
+                      {policy === 'representative' ? (
+                        <Field label="대표 행 기준 컬럼" htmlFor="representative-column">
+                          <select id="representative-column" value={representativeColumn ?? ''} onChange={event => setRepresentativeColumn(event.target.value || undefined)}>
+                            <option value="">첫 번째 행 사용</option>
+                            {leftHeaders.map(header => <option key={header}>{header}</option>)}
+                          </select>
+                        </Field>
+                      ) : null}
+                      {policy === 'aggregate' ? (
+                        <Field label="중복 행 집계 방식" htmlFor="aggregation-method">
+                          <select id="aggregation-method" value={aggregationMethod} onChange={event => setAggregationMethod(event.target.value as ComparisonRule['aggregationMethod'])}>
+                            <option value="sum">Sum</option><option value="mean">Mean</option><option value="min">Minimum</option><option value="max">Maximum</option><option value="count">Count</option><option value="nunique">Unique count</option><option value="concat_unique">Concatenate unique</option>
+                          </select>
+                        </Field>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="form-actions">
+                    <Button type="submit" variant="primary" disabled={!canRun}>브라우저에서 비교 실행</Button>
+                    <Button onClick={saveTemplate}>설정 템플릿 저장</Button>
+                    <label className="button button--secondary" htmlFor="template-upload">설정 템플릿 불러오기</label>
+                    <input className="visually-hidden" id="template-upload" type="file" accept="application/json" onChange={event => importTemplate(event.target.files?.[0])} />
+                    {disabledReason ? <p className="disabled-reason">{disabledReason}</p> : null}
+                  </div>
+                  {templateMessage ? (
+                    <div aria-live="polite">
+                      <StateMessage title={templateMessage.tone === 'success' ? '템플릿 처리 완료' : '템플릿 처리 오류'} tone={templateMessage.tone} role={templateMessage.tone === 'error' ? 'alert' : 'status'}>
+                        {templateMessage.text}
+                      </StateMessage>
+                    </div>
+                  ) : null}
+                </Form>
+              </Section>
+            ) : (
+              <Section id="comparison-setup" className="comparison-setup" tone="surface" aria-labelledby="setup-title">
+                <div className="section-heading">
+                  <Heading level={2} description="두 파일을 선택하면 키와 비교 컬럼 설정이 이곳에 표시됩니다."><span id="setup-title">비교 설정</span></Heading>
+                </div>
+                <StateMessage title="파일을 기다리고 있습니다">첫 번째 파일과 두 번째 파일을 모두 선택하세요.</StateMessage>
+              </Section>
+            )}
+
+            <ProgressPanel progress={progress} onCancel={cancel} />
+            {!progress ? <ResultsPanel result={result} onRetry={run} isReady={canRun} /> : null}
+          </div>
+        </Container>
+      </main>
+    </>
+  );
 }
