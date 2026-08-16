@@ -8,7 +8,7 @@ function save(text: string, filename: string, type: string): void {
 }
 
 function comparisonValues(row: ComparisonResult['rows'][number], side: 'A' | 'B'): string {
-  const values = row.trace.filter(item => item.side === side && item.ruleId !== 'row').flatMap(item => item.originalValues.map(decodeScalar)).map(value => value === null ? '(빈 값)' : String(value));
+  const values = row.trace.filter(item => item.side === side && item.ruleId !== 'row').flatMap(item => item.originalValues.map(decodeScalar)).map(value => typeof value === 'number' && Number.isFinite(value) ? new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 10 }).format(value) : value === null ? '(빈 값)' : String(value));
   return [...new Set(values)].join(' | ');
 }
 
