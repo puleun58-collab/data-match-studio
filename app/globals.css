@@ -5,6 +5,8 @@ main > h1 { margin-bottom: 8px; }
 main > section { background: #fff; border: 1px solid #d9e0ea; border-radius: 10px; padding: 18px; margin: 16px 0; }
 .comparison-setup > p { color: #526070; margin-top: -4px; }
 .comparison-setup > label { display: inline-flex; vertical-align: top; flex-direction: column; gap: 6px; margin: 10px 18px 14px 0; font-weight: 600; }
+.comparison-setup > .checkbox-label { flex-direction: row; align-items: center; min-height: 34px; }
+.comparison-setup input[type="checkbox"] { width: auto; min-width: 16px; height: 16px; margin: 0 6px 0 0; }
 .comparison-setup select { min-height: 34px; min-width: 180px; padding: 5px; font: inherit; }
 .comparison-setup select[multiple] { min-width: 220px; }
 .comparison-setup fieldset { display: inline-flex; vertical-align: top; flex-direction: column; gap: 8px; min-width: 230px; margin: 10px 18px 14px 0; padding: 12px; border: 1px solid #c9d3e2; border-radius: 8px; }
