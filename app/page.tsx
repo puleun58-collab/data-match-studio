@@ -359,38 +359,47 @@ export default function HomePage() {
                     <div className="setup-group__title"><h3>중복 키 처리</h3><p>같은 키가 여러 행에 있을 때 값을 비교하는 기준을 선택하세요.</p></div>
                     <div className="setup-options">
                       <label className="checkbox-label" title="켜면 S001과 s001을 다른 키로 처리합니다."><input type="checkbox" checked={caseSensitive} onChange={event => setCaseSensitive(event.target.checked)} /> 키의 영문 대소문자 구분</label>
-                      <Field label="중복 키 비교 기준" htmlFor="duplicate-policy" hint="같은 키가 한쪽 또는 양쪽 파일에 여러 번 나타날 때 적용됩니다.">
-                        <select id="duplicate-policy" value={policy} aria-describedby="duplicate-policy-description" onChange={event => { setPolicy(event.target.value); setResult(undefined); }}>
-                          <option value="report">중복만 확인</option>
-                          <option value="set">고유값 기준 (중복 횟수 제외)</option>
-                          <option value="multiset">전체값 기준 (중복 횟수 포함)</option>
-                          <option value="aggregate">집계값 기준</option>
-                          <optgroup label="고급 설정">
-                            <option value="representative">대표 행 기준</option>
-                          </optgroup>
-                          {policy === 'first' ? <option value="first">이전 설정: 같은 키의 첫 번째 행 기준</option> : null}
-                          {policy === 'last' ? <option value="last">이전 설정: 같은 키의 마지막 행 기준</option> : null}
-                        </select>
-                        <p className="policy-description" id="duplicate-policy-description">
-                          <strong>{duplicatePolicyHelp[policy].title}</strong>
-                          <span>{duplicatePolicyHelp[policy].description}</span>
-                        </p>
-                      </Field>
-                      {policy === 'representative' ? (
-                        <Field label="대표 행을 고를 기준 컬럼" htmlFor="representative-column">
-                          <select id="representative-column" value={representativeColumn ?? ''} onChange={event => setRepresentativeColumn(event.target.value || undefined)}>
-                            <option value="">첫 번째 행 사용</option>
-                            {leftHeaders.map(header => <option key={header}>{header}</option>)}
+                      <div className="duplicate-policy-control">
+                        <Field label="중복 키 비교 기준" htmlFor="duplicate-policy" hint="같은 키가 한쪽 또는 양쪽 파일에 여러 번 나타날 때 적용됩니다.">
+                          <select id="duplicate-policy" value={policy} aria-describedby="duplicate-policy-description" onChange={event => { setPolicy(event.target.value); setResult(undefined); }}>
+                            <option value="report">중복만 확인</option>
+                            <option value="set">고유값 기준 (중복 횟수 제외)</option>
+                            <option value="multiset">전체값 기준 (중복 횟수 포함)</option>
+                            <option value="aggregate">집계값 기준</option>
+                            {policy === 'representative' ? <option value="representative">대표 행 기준 (고급 설정)</option> : null}
+                            {policy === 'first' ? <option value="first">이전 설정: 같은 키의 첫 번째 행 기준</option> : null}
+                            {policy === 'last' ? <option value="last">이전 설정: 같은 키의 마지막 행 기준</option> : null}
                           </select>
+                          <p className="policy-description" id="duplicate-policy-description">
+                            <strong>{duplicatePolicyHelp[policy].title}</strong>
+                            <span>{duplicatePolicyHelp[policy].description}</span>
+                          </p>
                         </Field>
-                      ) : null}
-                      {policy === 'aggregate' ? (
-                        <Field label="중복 행 집계 방식" htmlFor="aggregation-method">
-                          <select id="aggregation-method" value={aggregationMethod} onChange={event => setAggregationMethod(event.target.value as ComparisonRule['aggregationMethod'])}>
-                            <option value="sum">합계</option><option value="mean">평균</option><option value="min">최솟값</option><option value="max">최댓값</option><option value="count">값이 있는 행 수</option><option value="nunique">서로 다른 값의 수</option><option value="concat_unique">서로 다른 값 이어 붙이기</option>
-                          </select>
-                        </Field>
-                      ) : null}
+                        {policy === 'aggregate' ? (
+                          <Field label="중복 행 집계 방식" htmlFor="aggregation-method">
+                            <select id="aggregation-method" value={aggregationMethod} onChange={event => setAggregationMethod(event.target.value as ComparisonRule['aggregationMethod'])}>
+                              <option value="sum">합계</option><option value="mean">평균</option><option value="min">최솟값</option><option value="max">최댓값</option><option value="count">값이 있는 행 수</option><option value="nunique">서로 다른 값의 수</option><option value="concat_unique">서로 다른 값 이어 붙이기</option>
+                            </select>
+                          </Field>
+                        ) : null}
+                        <details className="duplicate-advanced" open={policy === 'representative'}>
+                          <summary>고급 설정</summary>
+                          <div className="duplicate-advanced__body">
+                            <label className="advanced-option">
+                              <input type="radio" name="duplicate-policy-advanced" checked={policy === 'representative'} onChange={() => { setPolicy('representative'); setResult(undefined); }} />
+                              <span><strong>대표 행 기준</strong><small>선택한 컬럼의 값이 가장 큰 행 하나를 각 파일에서 골라 비교합니다.</small></span>
+                            </label>
+                            {policy === 'representative' ? (
+                              <Field label="대표 행을 고를 기준 컬럼" htmlFor="representative-column">
+                                <select id="representative-column" value={representativeColumn ?? ''} onChange={event => setRepresentativeColumn(event.target.value || undefined)}>
+                                  <option value="">첫 번째 비교 컬럼 사용</option>
+                                  {leftHeaders.map(header => <option key={header}>{header}</option>)}
+                                </select>
+                              </Field>
+                            ) : null}
+                          </div>
+                        </details>
+                      </div>
                     </div>
                   </div>
 
