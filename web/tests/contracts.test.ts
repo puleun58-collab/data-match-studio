@@ -37,6 +37,18 @@ test('browser engine emits one row per key and duplicate diagnostics', () => {
   assert.equal(result.rows[0].displayStatus, '중복 키');
 });
 
+test('browser engine maps different key and value columns between sheets', () => {
+  const left = { headers: ['left_id', 'left_value'], rows: [[encodeScalar('A'), encodeScalar(10)]], headerOffset: 0, delimiter: '' };
+  const right = { headers: ['right_id', 'right_value'], rows: [[encodeScalar('A'), encodeScalar(10)]], headerOffset: 0, delimiter: '' };
+  const result = compareTables(left, right, {
+    keyColumns: ['left_id'],
+    keyColumnsB: ['right_id'],
+    rules: [{ id: 'value', columnA: 'left_value', columnB: 'right_value', dataType: 'number' }],
+  });
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0].status, 'matched');
+});
+
 test('ScalarV1 decoder rejects malformed payloads', () => {
   assert.throws(() => decodeScalar({ version: 1, type: 'float', value: Number.NaN } as any));
   assert.throws(() => decodeScalar({ version: 1, type: 'datetime', value: '2026-01-01T00:00:00' } as any));

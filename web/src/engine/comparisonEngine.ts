@@ -4,7 +4,7 @@ import { decodeScalar, encodeScalar, serializeDeterministic } from './serializat
 export type DuplicatePolicy = 'report' | 'first' | 'last' | 'set' | 'multiset' | 'aggregate' | 'representative';
 export type NullPolicy = { bothEmptyEqual?: boolean; oneEmptyMismatch?: boolean; emptyEqualsZero?: boolean; emptyEqualsText?: string; missingTokens?: string[] };
 export type ComparisonRule = { id: string; columnA: string | number; columnB: string | number; dataType?: 'text' | 'number' | 'date' | 'boolean'; caseSensitive?: boolean; aggregationMethod?: 'sum' | 'mean' | 'min' | 'max' | 'count' | 'nunique' | 'concat_unique'; nullPolicy?: NullPolicy };
-export type ComparisonConfig = { keyColumns: (string | number)[]; compareColumns?: (string | number)[]; rules?: ComparisonRule[]; caseSensitive?: boolean; duplicatePolicy?: DuplicatePolicy; nmPolicy?: DuplicatePolicy; representativeColumn?: string | number };
+export type ComparisonConfig = { keyColumns: (string | number)[]; keyColumnsB?: (string | number)[]; compareColumns?: (string | number)[]; rules?: ComparisonRule[]; caseSensitive?: boolean; duplicatePolicy?: DuplicatePolicy; nmPolicy?: DuplicatePolicy; representativeColumn?: string | number };
 export type ComparisonStatus = 'matched' | 'added' | 'removed' | 'changed' | 'duplicate' | 'nm-pending' | 'invalid-key' | 'conversion-failed';
 export type OutcomeFlag = 'comparable' | 'identical' | 'mismatch' | 'conversion_failed' | 'duplicate' | 'nm_pending' | 'a_only' | 'b_only' | 'invalid_key' | 'structural_block';
 export type TraceItem = { side: 'A' | 'B'; ruleId: string; rowIndex: number; ordinal: number; originalValues: ScalarV1[]; normalizedValues: ScalarV1[]; status: string; reason: string; conversionSuccess: boolean; numericDifference?: number; absoluteDifference?: number; differenceRate?: number; values: ScalarV1[] };
@@ -13,9 +13,9 @@ export type ComparisonSummary = { total: number; comparable: number; identical: 
 export type ComparisonResult = { rows: ComparisonRow[]; diagnostics: { code: string; message: string; details?: Record<string, ScalarV1> }[]; summary: ComparisonSummary };
 
 function col(table: Table, c: string | number): number { return typeof c === 'number' ? c : table.headers.indexOf(c); }
-function keyValues(row: ScalarV1[], table: Table, config: ComparisonConfig): ScalarV1[] { return config.keyColumns.map((c) => row[col(table, c)] ?? encodeScalar(null)); }
-function keyOf(row: ScalarV1[], table: Table, config: ComparisonConfig): string | null {
-  const values = keyValues(row, table, config);
+function keyValues(row: ScalarV1[], table: Table, config: ComparisonConfig, side: 'A' | 'B'): ScalarV1[] { return (side === 'B' ? config.keyColumnsB ?? config.keyColumns : config.keyColumns).map((c) => row[col(table, c)] ?? encodeScalar(null)); }
+function keyOf(row: ScalarV1[], table: Table, config: ComparisonConfig, side: 'A' | 'B'): string | null {
+  const values = keyValues(row, table, config, side);
   if (values.some((value) => value.type === 'null' || (value.type === 'string' && String(value.value).trim() === ''))) return null;
   const text = serializeDeterministic(values.map(decodeScalar));
   return config.caseSensitive === false ? text.toLocaleLowerCase() : text;
@@ -57,7 +57,7 @@ export function compareTables(left: Table, right: Table, config: ComparisonConfi
   const rightGroups = new Map<string, { row: ScalarV1[]; index: number }[]>();
   const invalid: { side: 'A' | 'B'; row: ScalarV1[]; index: number }[] = [];
   const add = (target: Map<string, { row: ScalarV1[]; index: number }[]>, table: Table, side: 'A' | 'B') => table.rows.forEach((row, index) => {
-    const key = keyOf(row, table, config);
+    const key = keyOf(row, table, config, side);
     if (key === null) { invalid.push({ side, row, index }); diagnostics.push({ code: 'INVALID_KEY', message: `${side} row ${index + 1} has an empty key.` }); return; }
     const members = target.get(key) ?? [];
     if (members.length) diagnostics.push({ code: 'DUPLICATE_KEY', message: `${side} contains duplicate key at row ${index + 1}.` });
@@ -84,7 +84,7 @@ export function compareTables(left: Table, right: Table, config: ComparisonConfi
       const collectionRules = rulesFor(config);
       const collectionConversionFailed = duplicate && (policy === 'set' || policy === 'multiset' || policy === 'aggregate') && [...leftMembers.map((member) => ({ member, table: left, side: 'A' as const })), ...rightMembers.map((member) => ({ member, table: right, side: 'B' as const }))].some(({ member, table, side }) => collectionRules.some((rule) => !normalize(decodeScalar(member.row[col(table, side === 'A' ? rule.columnA : rule.columnB)] ?? encodeScalar(null)), rule).ok));
       if (collectionConversionFailed) {
-        status = 'conversion-failed'; displayStatus = '형식 변환 실패'; flags = duplicate ? ['conversion_failed', 'duplicate'] : ['conversion_failed']; rows.push({ key: keyValues((selectedLeft ?? selectedRight)!.row, selectedLeft ? left : right, config), status, displayStatus, flags, left: selectedLeft?.row ?? null, right: selectedRight?.row ?? null, aCount, bCount, trace: [...trace('A', leftMembers, selectedRight, left, right, config), ...trace('B', rightMembers, selectedLeft, right, left, config)], provenance: { leftRow: selectedLeft?.index, rightRow: selectedRight?.index } }); continue;
+        status = 'conversion-failed'; displayStatus = '형식 변환 실패'; flags = duplicate ? ['conversion_failed', 'duplicate'] : ['conversion_failed']; rows.push({ key: keyValues((selectedLeft ?? selectedRight)!.row, selectedLeft ? left : right, config, selectedLeft ? 'A' : 'B'), status, displayStatus, flags, left: selectedLeft?.row ?? null, right: selectedRight?.row ?? null, aCount, bCount, trace: [...trace('A', leftMembers, selectedRight, left, right, config), ...trace('B', rightMembers, selectedLeft, right, left, config)], provenance: { leftRow: selectedLeft?.index, rightRow: selectedRight?.index } }); continue;
       }
       if (duplicate && (policy === 'aggregate' || policy === 'set' || policy === 'multiset')) {
         same = rulesFor(config).every((rule) => {
@@ -112,13 +112,13 @@ export function compareTables(left: Table, right: Table, config: ComparisonConfi
       } else {
         const evaluated = comparableRows(selectedLeft!.row, selectedRight!.row, left, right, config);
         same = evaluated.same;
-        if (evaluated.conversionFailed) { status = 'conversion-failed'; displayStatus = '형식 변환 실패'; flags = duplicate ? ['conversion_failed', 'duplicate'] : ['conversion_failed']; rows.push({ key: keyValues((selectedLeft ?? selectedRight)!.row, selectedLeft ? left : right, config), status, displayStatus, flags, left: selectedLeft?.row ?? null, right: selectedRight?.row ?? null, aCount, bCount, trace: [...trace('A', leftMembers, selectedRight, left, right, config), ...trace('B', rightMembers, selectedLeft, right, left, config)], provenance: { leftRow: selectedLeft?.index, rightRow: selectedRight?.index } }); continue; }
+        if (evaluated.conversionFailed) { status = 'conversion-failed'; displayStatus = '형식 변환 실패'; flags = duplicate ? ['conversion_failed', 'duplicate'] : ['conversion_failed']; rows.push({ key: keyValues((selectedLeft ?? selectedRight)!.row, selectedLeft ? left : right, config, selectedLeft ? 'A' : 'B'), status, displayStatus, flags, left: selectedLeft?.row ?? null, right: selectedRight?.row ?? null, aCount, bCount, trace: [...trace('A', leftMembers, selectedRight, left, right, config), ...trace('B', rightMembers, selectedLeft, right, left, config)], provenance: { leftRow: selectedLeft?.index, rightRow: selectedRight?.index } }); continue; }
       }
       status = same ? 'matched' : 'changed'; displayStatus = same ? (duplicate ? '중복 키 · 값 동일' : '모두 동일') : (duplicate ? '중복 키 · 값 상이' : '일부 항목 불일치'); flags = duplicate ? ['duplicate', ...(same ? ['comparable', 'identical'] : ['comparable', 'mismatch'])] as OutcomeFlag[] : (same ? ['comparable', 'identical'] : ['comparable', 'mismatch']);
     }
-    rows.push({ key: keyValues((selectedLeft ?? selectedRight)!.row, selectedLeft ? left : right, config), status, displayStatus, flags, left: selectedLeft?.row ?? null, right: selectedRight?.row ?? null, aCount, bCount, trace: [...trace('A', leftMembers, selectedRight, left, right, config), ...trace('B', rightMembers, selectedLeft, right, left, config)], provenance: { leftRow: selectedLeft?.index, rightRow: selectedRight?.index } });
+    rows.push({ key: keyValues((selectedLeft ?? selectedRight)!.row, selectedLeft ? left : right, config, selectedLeft ? 'A' : 'B'), status, displayStatus, flags, left: selectedLeft?.row ?? null, right: selectedRight?.row ?? null, aCount, bCount, trace: [...trace('A', leftMembers, selectedRight, left, right, config), ...trace('B', rightMembers, selectedLeft, right, left, config)], provenance: { leftRow: selectedLeft?.index, rightRow: selectedRight?.index } });
   }
-  for (const item of invalid) rows.push({ key: keyValues(item.row, item.side === 'A' ? left : right, config), status: 'invalid-key', displayStatus: '빈 키', flags: ['invalid_key', 'structural_block'], left: item.side === 'A' ? item.row : null, right: item.side === 'B' ? item.row : null, aCount: item.side === 'A' ? 1 : 0, bCount: item.side === 'B' ? 1 : 0, trace: trace(item.side, [{ row: item.row, index: item.index }], undefined, item.side === 'A' ? left : right, item.side === 'A' ? right : left, config), provenance: item.side === 'A' ? { leftRow: item.index } : { rightRow: item.index } });
+  for (const item of invalid) rows.push({ key: keyValues(item.row, item.side === 'A' ? left : right, config, item.side), status: 'invalid-key', displayStatus: '빈 키', flags: ['invalid_key', 'structural_block'], left: item.side === 'A' ? item.row : null, right: item.side === 'B' ? item.row : null, aCount: item.side === 'A' ? 1 : 0, bCount: item.side === 'B' ? 1 : 0, trace: trace(item.side, [{ row: item.row, index: item.index }], undefined, item.side === 'A' ? left : right, item.side === 'A' ? right : left, config), provenance: item.side === 'A' ? { leftRow: item.index } : { rightRow: item.index } });
   const summary: ComparisonSummary = { total: rows.length, comparable: rows.filter((row) => row.flags.includes('comparable')).length, identical: rows.filter((row) => row.flags.includes('identical')).length, mismatch: rows.filter((row) => row.flags.includes('mismatch')).length, aOnly: rows.filter((row) => row.flags.includes('a_only')).length, bOnly: rows.filter((row) => row.flags.includes('b_only')).length, duplicate: rows.filter((row) => row.flags.includes('duplicate')).length, conversionFailed: rows.filter((row) => row.flags.includes('conversion_failed')).length, nmPending: rows.filter((row) => row.flags.includes('nm_pending')).length, matchRate: 0 };
   summary.matchRate = summary.comparable ? (summary.identical / summary.comparable) * 100 : 0;
   return { rows, diagnostics, summary };
