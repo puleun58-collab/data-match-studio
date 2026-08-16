@@ -1,6 +1,13 @@
 import type { Metadata } from 'next';
+import { Noto_Sans_KR } from 'next/font/google';
 import type { ReactNode } from 'react';
 import './globals.css';
+
+const brandSans = Noto_Sans_KR({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-brand',
+});
 
 export const metadata: Metadata = {
   title: 'Data Match Studio',
@@ -11,7 +18,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="ko">
-      <body>
+      <body className={brandSans.variable}>
         <a className="skip-link" href="#main-content">본문으로 건너뛰기</a>
         {children}
       </body>

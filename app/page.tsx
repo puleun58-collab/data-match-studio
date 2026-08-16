@@ -246,12 +246,29 @@ export default function HomePage() {
           <div className="masthead" id="top">
             <div className="masthead__copy">
               <p className="masthead__eyebrow">LOCAL DATA COMPARISON</p>
-              <h1>두 파일의 차이를<br />명확하게 확인하세요.</h1>
+              <h1>
+                <span className="headline-line">두 파일의 차이를</span>
+                <span className="headline-line">
+                  <span>명확하게</span>{' '}
+                  <span>확인하세요.</span>
+                </span>
+              </h1>
               <p>키 컬럼을 기준으로 Excel, CSV, TSV 데이터를 비교하고 결과를 원하는 형식으로 저장합니다.</p>
+              <div className="hero-actions">
+                <a className="button button--primary hero-cta" href="#upload">
+                  <span>파일 선택 시작</span>
+                  <span className="button__trailing" aria-hidden="true">↓</span>
+                </a>
+              </div>
             </div>
             <aside className="privacy-note" aria-label="로컬 처리 안내">
-              <strong>브라우저 안에서만 처리</strong>
-              <span>파일 데이터는 이 페이지 밖으로 전송되거나 서버에 저장되지 않습니다.</span>
+              <span className="privacy-note__label">PROCESSING BOUNDARY</span>
+              <strong>파일은 이 화면 안에 머뭅니다.</strong>
+              <span className="privacy-note__copy">데이터는 서버로 전송되거나 저장되지 않습니다.</span>
+              <dl className="privacy-note__facts">
+                <div><dt>Server upload</dt><dd>없음</dd></div>
+                <div><dt>File support</dt><dd>XLSX / CSV / TSV</dd></div>
+              </dl>
             </aside>
           </div>
 
@@ -368,6 +385,17 @@ export default function HomePage() {
             <ProgressPanel progress={progress} onCancel={cancel} />
             {!progress ? <ResultsPanel result={result} onRetry={run} isReady={canRun} /> : null}
           </div>
+
+          <footer className="site-footer">
+            <div>
+              <span className="site-footer__brand">Data Match Studio</span>
+              <p>정확한 비교를 위한 로컬 데이터 도구</p>
+            </div>
+            <div className="site-footer__meta">
+              <span>파일은 브라우저 안에서만 처리됩니다.</span>
+              <a href="#upload">새 비교 시작</a>
+            </div>
+          </footer>
         </Container>
       </main>
     </>
