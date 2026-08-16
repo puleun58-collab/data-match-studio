@@ -22,3 +22,5 @@ out/
 *.csv
 .DS_Store
 Thumbs.db
+
+.vercel
