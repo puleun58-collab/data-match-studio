@@ -10,4 +10,11 @@ main > section { background: #fff; border: 1px solid #d9e0ea; border-radius: 10p
 .comparison-setup fieldset { display: inline-flex; vertical-align: top; flex-direction: column; gap: 8px; min-width: 230px; margin: 10px 18px 14px 0; padding: 12px; border: 1px solid #c9d3e2; border-radius: 8px; }
 .comparison-setup fieldset label { display: block; margin: 5px 0; font-weight: 400; }
 .comparison-setup button { margin: 8px 8px 0 0; padding: 8px 14px; }
+.result-warning { padding: 12px; border: 1px solid #d97706; border-radius: 8px; color: #92400e; background: #fffbeb; font-weight: 600; }
+.result-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; }
+.result-toolbar button, .result-toolbar input, .result-toolbar select { min-height: 34px; padding: 6px 10px; }
+.result-table-wrap { overflow-x: auto; margin-top: 12px; }
+.results-panel table { width: 100%; border-collapse: collapse; }
+.results-panel th, .results-panel td { padding: 8px; border: 1px solid #d9e0ea; text-align: left; vertical-align: top; }
+.results-panel th { background: #eef3f9; }
 @media (max-width: 800px) { body { padding: 12px; } .comparison-setup > label, .comparison-setup fieldset { display: flex; width: 100%; margin-right: 0; } }

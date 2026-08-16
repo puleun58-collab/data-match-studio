@@ -60,10 +60,13 @@ export function compareTables(left: Table, right: Table, config: ComparisonConfi
     const key = keyOf(row, table, config, side);
     if (key === null) { invalid.push({ side, row, index }); diagnostics.push({ code: 'INVALID_KEY', message: `${side} row ${index + 1} has an empty key.` }); return; }
     const members = target.get(key) ?? [];
-    if (members.length) diagnostics.push({ code: 'DUPLICATE_KEY', message: `${side} contains duplicate key at row ${index + 1}.` });
     members.push({ row, index }); target.set(key, members);
   });
   add(leftGroups, left, 'A'); add(rightGroups, right, 'B');
+  const leftDuplicateGroups = [...leftGroups.values()].filter((members) => members.length > 1).length;
+  const rightDuplicateGroups = [...rightGroups.values()].filter((members) => members.length > 1).length;
+  if (leftDuplicateGroups) diagnostics.push({ code: 'DUPLICATE_KEY', message: `첫 번째 시트에서 중복 키 그룹 ${leftDuplicateGroups}개를 찾았습니다.` });
+  if (rightDuplicateGroups) diagnostics.push({ code: 'DUPLICATE_KEY', message: `두 번째 시트에서 중복 키 그룹 ${rightDuplicateGroups}개를 찾았습니다.` });
   const keys = new Set([...leftGroups.keys(), ...rightGroups.keys()]);
   const rows: ComparisonRow[] = [];
   for (const key of keys) {

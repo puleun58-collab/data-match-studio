@@ -19,7 +19,7 @@ export default function HomePage() {
   const [keys, setKeys] = useState<string[]>([]); const [keysB, setKeysB] = useState<string[]>([]); const [compare, setCompare] = useState<string[]>([]); const [compareB, setCompareB] = useState<string[]>([]); const [rules, setRules] = useState<ComparisonRule[]>([]); const [representativeColumn, setRepresentativeColumn] = useState<string>();
   const [aggregationMethod, setAggregationMethod] = useState<ComparisonRule['aggregationMethod']>('sum');
   const [nullPolicy, setNullPolicy] = useState<NonNullable<ComparisonRule['nullPolicy']>>({ bothEmptyEqual: true, oneEmptyMismatch: true, emptyEqualsZero: false });
-  const [caseSensitive, setCaseSensitive] = useState(true); const [policy, setPolicy] = useState('report');
+  const [caseSensitive, setCaseSensitive] = useState(true); const [policy, setPolicy] = useState('set');
   const [result, setResult] = useState<ComparisonResult>(); const [progress, setProgress] = useState<{ completed: number; total: number }>();
   const worker = useRef<Worker | null>(null); const request = useRef('');
   const leftHeaders = useMemo(() => left?.table?.headers ?? [], [left]);
