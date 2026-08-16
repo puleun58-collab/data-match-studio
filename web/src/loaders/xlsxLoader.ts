@@ -11,6 +11,8 @@ export type XlsxLoaderOptions = {
   dataStartRow?: number;
 };
 
+export type XlsxSheetResult = { ok: true; sheets: string[] } | { ok: false; diagnostics: { code: string; message: string }[] };
+
 const fail = (code: string, message: string): LoaderResult => ({
   ok: false,
   diagnostics: [{ code: code as any, message }],
@@ -27,6 +29,19 @@ async function inflate(data: Uint8Array, method: number, expectedSize: number, m
   while (true) { const part = await reader.read(); if (part.done) break; total += part.value.byteLength; if (total > maxOutput) { await reader.cancel(); throw new Error('ZIP_LIMIT'); } chunks.push(part.value); }
   if (expectedSize > maxOutput || (expectedSize > 0 && total !== expectedSize)) throw new Error('ZIP_LIMIT');
   const output = new Uint8Array(total); let offset = 0; for (const chunk of chunks) { output.set(chunk, offset); offset += chunk.byteLength; } return output;
+}
+
+export async function listXlsxSheets(input: Blob | ArrayBuffer | Uint8Array, limits?: Partial<XlsxLimits>): Promise<XlsxSheetResult> {
+  try {
+    const bytes = input instanceof Blob ? new Uint8Array(await input.arrayBuffer()) : input instanceof Uint8Array ? input : new Uint8Array(input);
+    const preflight = inspectXlsxZip(bytes, limits);
+    if (preflight.diagnostics.length) return { ok: false, diagnostics: preflight.diagnostics.map((item) => ({ code: item.code, message: item.message })) };
+    const entry = preflight.entries.find((item) => item.name === 'xl/workbook.xml');
+    if (!entry) return { ok: false, diagnostics: [{ code: 'UNSUPPORTED_FORMAT', message: 'Workbook metadata is missing.' }] };
+    const xml = new TextDecoder('utf-8', { fatal: true }).decode(await inflate(zipEntryBytes(bytes, entry), entry.method, entry.uncompressedSize, limits?.maxUncompressedBytes ?? DEFAULT_XLSX_LIMITS.maxUncompressedBytes));
+    const sheets = [...xml.matchAll(/<sheet\b[^>]*\bname="([^"]+)"/g)].map((match) => match[1]).filter(Boolean);
+    return sheets.length ? { ok: true, sheets } : { ok: false, diagnostics: [{ code: 'UNSUPPORTED_FORMAT', message: 'Workbook contains no worksheets.' }] };
+  } catch (error) { return { ok: false, diagnostics: [{ code: 'UNSUPPORTED_FORMAT', message: `Unable to inspect XLSX sheets: ${error instanceof Error ? error.message : String(error)}` }] }; }
 }
 
 function xmlText(bytes: Uint8Array): string {

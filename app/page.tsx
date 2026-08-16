@@ -5,15 +5,17 @@ import UploadPanel from './components/UploadPanel';
 import ProgressPanel from './components/ProgressPanel';
 import ResultsPanel from './components/ResultsPanel';
 import { loadCsv } from '../web/src/loaders/csvLoader';
-import { loadXlsx } from '../web/src/loaders/xlsxLoader';
+import { listXlsxSheets, loadXlsx } from '../web/src/loaders/xlsxLoader';
 import type { Table } from '../web/src/engine/contracts';
 import type { ComparisonConfig, ComparisonResult, ComparisonRule } from '../web/src/engine/comparisonEngine';
 import type { WorkerResponse } from '../web/src/workers/workerProtocol';
 import { remapConfig, type BrowserTemplateV2 } from '../web/src/templates/remap';
 
+type BrowserFileState = { file: File; table?: Table; error?: string; sheets?: string[]; sheetName?: string };
+
 export default function HomePage() {
-  const [left, setLeft] = useState<{ file: File; table?: Table; error?: string }>();
-  const [right, setRight] = useState<{ file: File; table?: Table; error?: string }>();
+  const [left, setLeft] = useState<BrowserFileState>();
+  const [right, setRight] = useState<BrowserFileState>();
   const [keys, setKeys] = useState<string[]>([]); const [compare, setCompare] = useState<string[]>([]); const [rules, setRules] = useState<ComparisonRule[]>([]); const [representativeColumn, setRepresentativeColumn] = useState<string>();
   const [aggregationMethod, setAggregationMethod] = useState<ComparisonRule['aggregationMethod']>('sum');
   const [nullPolicy, setNullPolicy] = useState<NonNullable<ComparisonRule['nullPolicy']>>({ bothEmptyEqual: true, oneEmptyMismatch: true, emptyEqualsZero: false });
@@ -22,17 +24,26 @@ export default function HomePage() {
   const worker = useRef<Worker | null>(null); const request = useRef('');
   const headers = useMemo(() => left?.table && right?.table ? left.table.headers.filter(h => right.table!.headers.includes(h)) : (left?.table?.headers ?? right?.table?.headers ?? []), [left, right]);
   const emptyResult = (diagnostics: { code: string; message: string }[]): ComparisonResult => ({ rows: [], diagnostics, summary: { total: 0, comparable: 0, identical: 0, mismatch: 0, aOnly: 0, bOnly: 0, duplicate: 0, conversionFailed: 0, nmPending: 0, matchRate: 0 } });
-  async function readFile(file: File) {
+  async function readFile(file: File, sheetName?: string) {
     try {
       const lower = file.name.toLowerCase();
       if (lower.endsWith('.xls')) return { file, error: 'Legacy .xls files are not supported in the browser. Use the local Python/Streamlit path or convert to XLSX.' };
       if (lower.endsWith('.xlsm')) return { file, error: 'Macro-enabled XLSM files are not supported in the browser. Use the local Python/Streamlit path with macro execution disabled.' };
-      const parsed = lower.endsWith('.xlsx') || lower.endsWith('.xlsm') ? await loadXlsx(file) : loadCsv(new Uint8Array(await file.arrayBuffer()), { format: lower.endsWith('.tsv') ? 'tsv' : 'csv' });
+      if (lower.endsWith('.xlsx')) {
+        const sheetList = await listXlsxSheets(file);
+        if (!sheetList.ok) return { file, error: sheetList.diagnostics.map(d => `${d.code}: ${d.message}`).join('\n') };
+        const selectedSheet = sheetName ?? sheetList.sheets[0];
+        const parsed = await loadXlsx(file, { sheetName: selectedSheet });
+        if (!parsed.ok) return { file, sheets: sheetList.sheets, sheetName: selectedSheet, error: parsed.diagnostics.map(d => `${d.code}: ${d.message}`).join('\n') };
+        return { file, sheets: sheetList.sheets, sheetName: selectedSheet, table: parsed.value };
+      }
+      const parsed = lower.endsWith('.xlsm') ? await loadXlsx(file) : loadCsv(new Uint8Array(await file.arrayBuffer()), { format: lower.endsWith('.tsv') ? 'tsv' : 'csv' });
       if (!parsed.ok) return { file, error: parsed.diagnostics.map(d => `${d.code}: ${d.message}`).join('\n') };
       return { file, table: parsed.value };
     } catch (e) { return { file, error: e instanceof Error ? e.message : String(e) }; }
   }
   async function choose(side: 'left' | 'right', file?: File) { if (!file) return; const value = await readFile(file); side === 'left' ? setLeft(value) : setRight(value); setResult(undefined); }
+  async function chooseSheet(side: 'left' | 'right', sheetName: string) { const current = side === 'left' ? left : right; if (!current) return; const value = await readFile(current.file, sheetName); side === 'left' ? setLeft(value) : setRight(value); setResult(undefined); }
   function run() {
     if (!left?.table || !right?.table || !keys.length) return;
     const id = crypto.randomUUID(); request.current = id; worker.current?.terminate(); worker.current = new Worker(new URL('../web/src/workers/compare.worker.ts', import.meta.url));
@@ -47,7 +58,7 @@ export default function HomePage() {
   function importTemplate(file?: File) { if (!file) return; file.text().then(t => { try { const x = JSON.parse(t) as BrowserTemplateV2; const remapped = remapConfig(headers, x); if (remapped.diagnostics.length || !remapped.config) { setResult(emptyResult(remapped.diagnostics.map(d => ({ code: d.code, message: d.message })))); return; } setKeys(remapped.config.keyColumns.map(String)); setCompare(remapped.config.compareColumns.map(String)); setRules(remapped.config.rules); setAggregationMethod(remapped.config.rules[0]?.aggregationMethod ?? 'sum'); setNullPolicy(remapped.config.rules[0]?.nullPolicy ?? nullPolicy); setRepresentativeColumn(remapped.config.representativeColumn === undefined ? undefined : String(remapped.config.representativeColumn)); setCaseSensitive(remapped.config.caseSensitive); setPolicy(remapped.config.duplicatePolicy); } catch { setResult(emptyResult([{ code: 'INVALID_TEMPLATE', message: 'Template is not valid JSON.' }])); } }); }
   function editRulePolicy(column: string, patch: NonNullable<ComparisonRule['nullPolicy']>) { setRules(previous => { const base = previous.length ? previous : compare.map((name, index) => ({ id: `rule-${index + 1}`, columnA: name, columnB: name })); return base.map(rule => String(rule.columnA) === column ? { ...rule, nullPolicy: { ...((rule as ComparisonRule).nullPolicy ?? {}), ...patch } } : rule); }); }
   return <main><h1>Data Match Studio</h1><p>Compare files locally in your browser. File bytes never leave this page.</p>
-    <UploadPanel side="left" value={left} onChange={f => choose('left', f)} /><UploadPanel side="right" value={right} onChange={f => choose('right', f)} />
+    <UploadPanel side="left" value={left} onChange={f => choose('left', f)} onSheetChange={sheet => chooseSheet('left', sheet)} /><UploadPanel side="right" value={right} onChange={f => choose('right', f)} onSheetChange={sheet => chooseSheet('right', sheet)} />
     {headers.length > 0 && <section><h2>Comparison setup</h2><label>Key columns <select multiple value={keys} onChange={e => setKeys(Array.from(e.target.selectedOptions, o => o.value))}>{headers.map(h => <option key={h}>{h}</option>)}</select></label><label>Columns to compare <select multiple value={compare} onChange={e => setCompare(Array.from(e.target.selectedOptions, o => o.value))}>{headers.map(h => <option key={h}>{h}</option>)}</select></label><label>Representative sort column <select value={representativeColumn ?? ''} onChange={e => setRepresentativeColumn(e.target.value || undefined)}><option value="">First row</option>{headers.map(h => <option key={h}>{h}</option>)}</select></label><label>Aggregation method <select value={aggregationMethod} onChange={e => setAggregationMethod(e.target.value as ComparisonRule['aggregationMethod'])}><option value="sum">Sum</option><option value="mean">Mean</option><option value="min">Minimum</option><option value="max">Maximum</option><option value="count">Count</option><option value="nunique">Unique count</option><option value="concat_unique">Concatenate unique</option></select></label>{compare.map(column => { const rule = rules.find(item => String(item.columnA) === column); const policyForRule = rule?.nullPolicy ?? nullPolicy; return <fieldset key={`null-${column}`}><legend>Null policy: {column}</legend><label><input type="checkbox" checked={policyForRule.bothEmptyEqual !== false} onChange={e => editRulePolicy(column, { bothEmptyEqual: e.target.checked })} /> Both empty equal</label><label><input type="checkbox" checked={policyForRule.oneEmptyMismatch !== false} onChange={e => editRulePolicy(column, { oneEmptyMismatch: e.target.checked })} /> One empty mismatches</label><label><input type="checkbox" checked={policyForRule.emptyEqualsZero === true} onChange={e => editRulePolicy(column, { emptyEqualsZero: e.target.checked })} /> Empty equals zero</label><label>Empty equals text <input value={policyForRule.emptyEqualsText ?? ''} onChange={e => editRulePolicy(column, { emptyEqualsText: e.target.value || undefined })} /></label><label>Missing tokens <input value={(policyForRule.missingTokens ?? []).join(', ')} onChange={e => editRulePolicy(column, { missingTokens: e.target.value.split(',').map(token => token.trim().toLocaleLowerCase()).filter(Boolean) })} /></label></fieldset>})}<label><input type="checkbox" checked={caseSensitive} onChange={e => setCaseSensitive(e.target.checked)} /> Case-sensitive keys</label><label>Duplicate/N:M policy <select value={policy} onChange={e => setPolicy(e.target.value)}><option value="report">Report diagnostics</option><option value="first">Use first row</option><option value="last">Use last row</option><option value="representative">Use representative row</option><option value="set">Compare sets</option><option value="multiset">Compare multisets</option><option value="aggregate">Compare aggregates</option></select></label><button onClick={run} disabled={!left?.table || !right?.table || !keys.length}>Compare locally</button><button onClick={template}>Export template</button><label>Import template <input type="file" accept="application/json" onChange={e => importTemplate(e.target.files?.[0])} /></label></section>}
     <ProgressPanel progress={progress} onCancel={cancel} /><ResultsPanel result={result} /></main>;
 }
