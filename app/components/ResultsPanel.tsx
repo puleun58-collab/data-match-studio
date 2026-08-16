@@ -12,7 +12,7 @@ const statusLabels: Record<string, string> = {
   added: '두 번째 시트에만 존재',
   removed: '첫 번째 시트에만 존재',
   duplicate: '중복 키',
-  'nm-pending': 'N:M 처리 필요',
+  'nm-pending': '양쪽 파일에 중복 키',
   'invalid-key': '빈 키',
   'conversion-failed': '형식 변환 실패',
 };
@@ -113,7 +113,7 @@ export default function ResultsPanel({ result, onRetry, isReady }: Props) {
 
           {duplicateBlocked ? (
             <StateMessage title="중복 키 처리 방식이 필요합니다" tone="warning" role="alert" action={<Button onClick={() => document.querySelector('#comparison-setup')?.scrollIntoView()}>설정으로 이동</Button>}>
-              값 비교가 실행되지 않았습니다. 중복 키/N:M 처리 방식을 목적에 맞게 변경한 뒤 다시 실행하세요.
+              값 비교가 실행되지 않았습니다. 비교 설정에서 중복 키 비교 방법을 선택한 뒤 다시 실행하세요.
             </StateMessage>
           ) : null}
 
