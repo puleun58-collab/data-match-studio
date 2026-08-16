@@ -11,6 +11,12 @@ main > section { background: #fff; border: 1px solid #d9e0ea; border-radius: 10p
 .comparison-setup select[multiple] { min-width: 220px; }
 .comparison-setup fieldset { display: inline-flex; vertical-align: top; flex-direction: column; gap: 8px; min-width: 230px; margin: 10px 18px 14px 0; padding: 12px; border: 1px solid #c9d3e2; border-radius: 8px; }
 .comparison-setup fieldset label { display: block; margin: 5px 0; font-weight: 400; }
+.column-selector { width: 250px; }
+.column-selector input[type="search"] { width: 100%; min-height: 34px; padding: 6px 8px; }
+.column-selector select { width: 100%; min-width: 0; }
+.column-selector small { color: #526070; }
+.selected-columns { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+.selected-columns button { margin: 0; padding: 3px 7px; border: 1px solid #9fb0c5; border-radius: 12px; background: #eef4fb; cursor: pointer; }
 .rule-policy-editor details { margin-top: 8px; padding-top: 8px; border-top: 1px solid #d9e0ea; }
 .rule-policy-editor summary { cursor: pointer; font-weight: 600; }
 .rule-policy-editor input[type="text"], .rule-policy-editor input:not([type]) { width: 100%; min-height: 32px; padding: 5px; }
