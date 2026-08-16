@@ -9,6 +9,9 @@ main > section { background: #fff; border: 1px solid #d9e0ea; border-radius: 10p
 .comparison-setup select[multiple] { min-width: 220px; }
 .comparison-setup fieldset { display: inline-flex; vertical-align: top; flex-direction: column; gap: 8px; min-width: 230px; margin: 10px 18px 14px 0; padding: 12px; border: 1px solid #c9d3e2; border-radius: 8px; }
 .comparison-setup fieldset label { display: block; margin: 5px 0; font-weight: 400; }
+.rule-policy-editor details { margin-top: 8px; padding-top: 8px; border-top: 1px solid #d9e0ea; }
+.rule-policy-editor summary { cursor: pointer; font-weight: 600; }
+.rule-policy-editor input[type="text"], .rule-policy-editor input:not([type]) { width: 100%; min-height: 32px; padding: 5px; }
 .comparison-setup button { margin: 8px 8px 0 0; padding: 8px 14px; }
 .result-warning { padding: 12px; border: 1px solid #d97706; border-radius: 8px; color: #92400e; background: #fffbeb; font-weight: 600; }
 .summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 14px 0; }

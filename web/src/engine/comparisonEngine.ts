@@ -2,7 +2,7 @@ import type { ScalarV1, Table } from './contracts';
 import { decodeScalar, encodeScalar, serializeDeterministic } from './serialization';
 
 export type DuplicatePolicy = 'report' | 'first' | 'last' | 'set' | 'multiset' | 'aggregate' | 'representative';
-export type NullPolicy = { bothEmptyEqual?: boolean; oneEmptyMismatch?: boolean; emptyEqualsZero?: boolean; emptyEqualsText?: string; missingTokens?: string[] };
+export type NullPolicy = { bothEmptyEqual?: boolean; oneEmptyMismatch?: boolean; emptyEqualsZero?: boolean; emptyEqualsFalse?: boolean; emptyEqualsText?: string; missingTokens?: string[] };
 export type ComparisonRule = { id: string; columnA: string | number; columnB: string | number; dataType?: 'text' | 'number' | 'date' | 'boolean'; caseSensitive?: boolean; aggregationMethod?: 'sum' | 'mean' | 'min' | 'max' | 'count' | 'nunique' | 'concat_unique'; nullPolicy?: NullPolicy };
 export type ComparisonConfig = { keyColumns: (string | number)[]; keyColumnsB?: (string | number)[]; compareColumns?: (string | number)[]; rules?: ComparisonRule[]; caseSensitive?: boolean; duplicatePolicy?: DuplicatePolicy; nmPolicy?: DuplicatePolicy; representativeColumn?: string | number };
 export type ComparisonStatus = 'matched' | 'added' | 'removed' | 'changed' | 'duplicate' | 'nm-pending' | 'invalid-key' | 'conversion-failed';
@@ -25,6 +25,7 @@ function normalize(value: unknown, rule: ComparisonRule): { value: unknown; ok: 
   const policy = rule.nullPolicy ?? {};
   if (value === null || value === undefined || value === '' || policy.missingTokens?.includes(String(value).trim().toLocaleLowerCase())) {
     if (policy.emptyEqualsZero && rule.dataType === 'number') return { value: 0, ok: true };
+    if (policy.emptyEqualsFalse && rule.dataType === 'boolean') return { value: false, ok: true };
     if (policy.emptyEqualsText !== undefined) return { value: policy.emptyEqualsText, ok: true };
     return { value: null, ok: true };
   }
