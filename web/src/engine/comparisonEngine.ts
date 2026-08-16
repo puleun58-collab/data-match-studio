@@ -80,7 +80,7 @@ export function compareTables(left: Table, right: Table, config: ComparisonConfi
     let status: ComparisonStatus;
     let displayStatus: string;
     let flags: OutcomeFlag[];
-    if (!aCount || !bCount) { status = aCount ? 'removed' : 'added'; displayStatus = aCount ? '데이터셋 B에만 존재' : '데이터셋 A에만 존재'; flags = [aCount ? 'b_only' : 'a_only']; }
+    if (!aCount || !bCount) { status = aCount ? 'removed' : 'added'; displayStatus = aCount ? '첫 번째 시트에만 존재' : '두 번째 시트에만 존재'; flags = [aCount ? 'a_only' : 'b_only']; }
     else if (duplicate && policy === 'report') { status = aCount > 1 && bCount > 1 ? 'nm-pending' : 'duplicate'; displayStatus = aCount > 1 && bCount > 1 ? 'N:M 처리 필요' : '중복 키'; flags = aCount > 1 && bCount > 1 ? ['nm_pending', 'duplicate', 'structural_block'] : ['duplicate', 'structural_block']; }
     else {
       let same: boolean;
@@ -121,7 +121,15 @@ export function compareTables(left: Table, right: Table, config: ComparisonConfi
     }
     rows.push({ key: keyValues((selectedLeft ?? selectedRight)!.row, selectedLeft ? left : right, config, selectedLeft ? 'A' : 'B'), status, displayStatus, flags, left: selectedLeft?.row ?? null, right: selectedRight?.row ?? null, aCount, bCount, trace: [...trace('A', leftMembers, selectedRight, left, right, config), ...trace('B', rightMembers, selectedLeft, right, left, config)], provenance: { leftRow: selectedLeft?.index, rightRow: selectedRight?.index } });
   }
-  for (const item of invalid) rows.push({ key: keyValues(item.row, item.side === 'A' ? left : right, config, item.side), status: 'invalid-key', displayStatus: '빈 키', flags: ['invalid_key', 'structural_block'], left: item.side === 'A' ? item.row : null, right: item.side === 'B' ? item.row : null, aCount: item.side === 'A' ? 1 : 0, bCount: item.side === 'B' ? 1 : 0, trace: trace(item.side, [{ row: item.row, index: item.index }], undefined, item.side === 'A' ? left : right, item.side === 'A' ? right : left, config), provenance: item.side === 'A' ? { leftRow: item.index } : { rightRow: item.index } });
+  for (const item of invalid) {
+    const table = item.side === 'A' ? left : right;
+    const invalidTrace: TraceItem[] = rulesFor(config).map((rule, ordinal) => {
+      const column = item.side === 'A' ? rule.columnA : rule.columnB;
+      const value = item.row[col(table, column)] ?? encodeScalar(null);
+      return { side: item.side, ruleId: rule.id, rowIndex: item.index, ordinal, originalValues: [value], normalizedValues: [value], status: 'invalid-key', reason: '키 컬럼 값이 비어 있습니다.', conversionSuccess: true, values: item.row };
+    });
+    rows.push({ key: keyValues(item.row, table, config, item.side), status: 'invalid-key', displayStatus: '빈 키', flags: ['invalid_key', 'structural_block'], left: item.side === 'A' ? item.row : null, right: item.side === 'B' ? item.row : null, aCount: item.side === 'A' ? 1 : 0, bCount: item.side === 'B' ? 1 : 0, trace: invalidTrace, provenance: item.side === 'A' ? { leftRow: item.index } : { rightRow: item.index } });
+  }
   const summary: ComparisonSummary = { total: rows.length, comparable: rows.filter((row) => row.flags.includes('comparable')).length, identical: rows.filter((row) => row.flags.includes('identical')).length, mismatch: rows.filter((row) => row.flags.includes('mismatch')).length, aOnly: rows.filter((row) => row.flags.includes('a_only')).length, bOnly: rows.filter((row) => row.flags.includes('b_only')).length, duplicate: rows.filter((row) => row.flags.includes('duplicate')).length, conversionFailed: rows.filter((row) => row.flags.includes('conversion_failed')).length, nmPending: rows.filter((row) => row.flags.includes('nm_pending')).length, matchRate: 0 };
   summary.matchRate = summary.comparable ? (summary.identical / summary.comparable) * 100 : 0;
   return { rows, diagnostics, summary };

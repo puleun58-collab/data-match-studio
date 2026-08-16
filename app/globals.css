@@ -11,6 +11,10 @@ main > section { background: #fff; border: 1px solid #d9e0ea; border-radius: 10p
 .comparison-setup fieldset label { display: block; margin: 5px 0; font-weight: 400; }
 .comparison-setup button { margin: 8px 8px 0 0; padding: 8px 14px; }
 .result-warning { padding: 12px; border: 1px solid #d97706; border-radius: 8px; color: #92400e; background: #fffbeb; font-weight: 600; }
+.summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 14px 0; }
+.summary-cards strong { padding: 12px; border: 1px solid #cdd8e6; border-radius: 8px; background: #f7faff; line-height: 1.6; }
+.blank-key-details { margin-top: 16px; padding: 12px; border: 1px solid #d97706; border-radius: 8px; background: #fffbeb; }
+.blank-key-details summary { cursor: pointer; font-weight: 700; }
 .result-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; }
 .result-toolbar button, .result-toolbar input, .result-toolbar select { min-height: 34px; padding: 6px 10px; }
 .result-table-wrap { overflow-x: auto; margin-top: 12px; }
