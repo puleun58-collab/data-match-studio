@@ -28,7 +28,7 @@ export function inspectXlsxZip(input: ArrayBuffer | Uint8Array, limits: Partial<
     totalC += c; totalU += u; if (totalC > lim.maxCompressedBytes || totalU > lim.maxUncompressedBytes || (c > 0 && u / c > lim.maxCompressionRatio)) diagnostics.push({ code: 'ZIP_LIMIT', message: `ZIP entry exceeds safety limits: ${name}`, details: { compressedSize: c, uncompressedSize: u } });
     entries.push({ name, compressedSize: c, uncompressedSize: u, method, localOffset: u32(b, p + 42) }); p += 46 + nl + xl + cl;
   }
-  for (const e of entries) { if (/^xl\/worksheets\//i.test(e.name) && e.uncompressedSize > lim.maxWorksheetBytes) diagnostics.push({ code: 'ZIP_LIMIT', message: `Worksheet exceeds limit: ${e.name}` }); if (/^xl\/sharedStrings\.xml$/i.test(e.name) && e.uncompressedSize > lim.maxSharedStringsBytes) diagnostics.push({ code: 'ZIP_LIMIT', message: 'Shared strings exceed limit.' }); if (/vbaProject|\.bin$/i.test(e.name)) diagnostics.push({ code: 'MACRO_REJECTED', message: 'Macro-enabled workbooks are not supported.' }); }
+  for (const e of entries) { if (/^xl\/worksheets\//i.test(e.name) && e.uncompressedSize > lim.maxWorksheetBytes) diagnostics.push({ code: 'ZIP_LIMIT', message: `Worksheet exceeds limit: ${e.name}` }); if (/^xl\/sharedStrings\.xml$/i.test(e.name) && e.uncompressedSize > lim.maxSharedStringsBytes) diagnostics.push({ code: 'ZIP_LIMIT', message: 'Shared strings exceed limit.' }); if (/^xl\/vbaProject\.bin$/i.test(e.name) || /(^|\/)vbaProject\.bin$/i.test(e.name)) diagnostics.push({ code: 'MACRO_REJECTED', message: 'Macro-enabled workbooks are not supported.' }); }
   return { entries, diagnostics };
 }
 
