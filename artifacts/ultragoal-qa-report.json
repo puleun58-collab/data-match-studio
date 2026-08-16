@@ -4,12 +4,13 @@
   "sourceHash": "sha256:e497080342971cadb0e1923d7f70f9212f029108068a895836c8071deecefb51",
   "status": "passed",
   "commands": [
-    {"command": "cmd.exe /c \"C:\\Users\\soej7\\AppData\\Local\\Programs\\Python\\Python311\\python.exe -m pytest -q\"", "exitCode": 0, "status": "passed", "evidence": "30 passed in 0.88s"},
+    {"command": "cmd.exe /c \"C:\\Users\\soej7\\AppData\\Local\\Programs\\Python\\Python311\\python.exe -m pytest -q\"", "exitCode": 0, "status": "passed", "evidence": "30 passed in 3.09s"},
     {"command": "npm run static-check", "exitCode": 0, "status": "passed", "evidence": "Static client-only boundary passed."},
     {"command": "npm test", "exitCode": 0, "status": "passed", "evidence": "8 tests passed, 0 failed."},
     {"command": "npm run typecheck", "exitCode": 0, "status": "passed", "evidence": "tsc --noEmit completed successfully."},
     {"command": "npm run build", "exitCode": 0, "status": "passed", "evidence": "Next.js static export generated / and /_not-found."},
-    {"command": "PATH=C:\\Users\\soej7\\AppData\\Local\\Programs\\Python\\Python311\\Scripts;%PATH% && streamlit run app.py --server.headless true --server.port 8511 (20s bound)", "exitCode": null, "status": "passed", "evidence": "Uvicorn server started on :::8511 and reported http://localhost:8511 before bounded timeout."}
+    {"command": "cmd.exe /c \"C:\\Users\\soej7\\AppData\\Local\\Programs\\Python\\Python311\\python.exe -m streamlit run app.py --server.headless true --server.port 8512\" (20s bound)", "exitCode": null, "status": "passed", "evidence": "Uvicorn server started on :::8512 and reported http://localhost:8512 before bounded timeout."},
+    {"command": "npx tsx -e '<template remap and null-policy assertions>'", "exitCode": 0, "status": "passed", "evidence": "Stale template reference diagnosed and emptyEqualsZero null policy matched empty with numeric zero."}
   ],
   "contractCoverage": [
     {"id": "C1", "contractRef": "duplicate-and-cardinality", "obligation": "Duplicate 1:N/N:1 and N:M keys remain one result row; N:M never expands cartesian rows and requires policy.", "status": "covered", "surfaceEvidenceRefs": ["S1", "S4"], "adversarialCaseRefs": ["A1"]},
