@@ -20,6 +20,19 @@ class ColumnRef:
         return f"{label} [{self.excel_letter}]"
 
 
+@dataclass(frozen=True)
+class ColumnExpectation:
+    side: str
+    index: int
+    id: str
+    raw: str
+    display: str
+    normalized_name: str
+    sheet: str | None = None
+    fingerprint: str | None = None
+    occurrence: int = 0
+
+
 @dataclass
 class KeyNormalizationOptions:
     trim: bool = True

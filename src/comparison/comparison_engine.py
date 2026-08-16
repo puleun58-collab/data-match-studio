@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import json
 from typing import Any
 
 import pandas as pd
@@ -11,7 +12,8 @@ from src.matching.duplicate_handler import representative
 from src.matching.join_engine import KeyCardinality
 from src.matching.multiset_matcher import compare_multisets
 from src.matching.set_matcher import compare_sets
-from src.models.comparison_result import ComparisonSummary, ResultRow, RuleResult
+from src.models.comparison_result import ComparisonSummary, ResultRow, RuleResult, TraceItem
+from .status import flags_for_status, summary_counts
 from src.models.config import ComparisonConfig, ComparisonRule
 from .base_comparator import ValueComparison
 from .boolean_comparator import compare_boolean
@@ -87,9 +89,15 @@ class ComparisonEngine:
                 single.iloc[0] if swapped else selected,
                 config,
             )
-            result.status = status
+            if result.status == "형식 변환 실패":
+                result.status = "형식 변환 실패"
+            else:
+                result.status = "중복 키 · 값 동일" if result.status == "모두 동일" else "중복 키 · 값 상이"
             result.duplicate_type = f"{status} · {policy.policy_type}"
             result.reason = f"{policy.policy_type} 대표 행 선택; {result.reason}"
+            result.outcome_flags = flags_for_status(result.status)
+            if result.status == status and any(item.status == "형식 변환 실패" for item in result.rule_results):
+                result.outcome_flags |= flags_for_status("형식 변환 실패")
             return [result]
         if policy.policy_type in {"set", "multiset", "aggregate"}:
             result = self._compare_collection(
@@ -99,9 +107,11 @@ class ComparisonEngine:
                 config,
                 policy.policy_type,
             )
-            result.status = status
+            if result.status != "형식 변환 실패":
+                result.status = status
             result.duplicate_type = f"{status} · {policy.policy_type}"
             result.reason = f"{policy.policy_type} 처리; {result.reason}"
+            result.outcome_flags = flags_for_status(result.status)
             return [result]
         if not policy.allow_one_to_many and policy.policy_type == "error":
             return [ResultRow(key, self._key_display(key), "중복 키", "1:N 또는 N:1 키에 대한 행별 비교가 허용되지 않았습니다.", len(single) if not swapped else len(many), len(many) if not swapped else len(single), duplicate_type=status, rule_results=self._unavailable_rules(config, "중복 키 처리 규칙 위반"))]
@@ -111,8 +121,38 @@ class ComparisonEngine:
             result.status = status
             result.reason = f"{status}; " + result.reason
             result.duplicate_type = status
+            result.outcome_flags = flags_for_status(result.status)
             output.append(result)
-        return output
+        if not output:
+            return output
+        first = output[0]
+        first.details["trace"] = [
+            TraceItem(
+                side,
+                item.rule_id,
+                ordinal,
+                row.row_id_a if side == "A" else row.row_id_b,
+                item.original_a if side == "A" else item.original_b,
+                item.normalized_a if side == "A" else item.normalized_b,
+                item.status,
+                item.reason,
+                item.conversion_success_a if side == "A" else item.conversion_success_b,
+                item.numeric_difference,
+                item.absolute_difference,
+                item.difference_rate,
+            ).__dict__
+            for ordinal, row in enumerate(output)
+            for side in ("A", "B")
+            for item in row.rule_results
+        ]
+        first.rule_results = [item for row in output for item in row.rule_results]
+        if any(item.status == "형식 변환 실패" for item in first.rule_results):
+            first.status = "형식 변환 실패"
+            first.outcome_flags = flags_for_status(first.status)
+        first.reason = "; ".join(row.reason for row in output)
+        first.a_count = len(single) if not swapped else len(many)
+        first.b_count = len(many) if not swapped else len(single)
+        return [first]
 
     def _compare_many_to_many(self, key: tuple[Any, ...], group_a: pd.DataFrame, group_b: pd.DataFrame, config: ComparisonConfig) -> list[ResultRow]:
         policy = config.nm_policy
@@ -128,9 +168,11 @@ class ComparisonEngine:
             row_a = representative(group_a, config.duplicate_policy_a)
             row_b = representative(group_b, config.duplicate_policy_b)
             result = self._compare_rows(key, row_a, row_b, config)
-            result.status = "중복 키 · 값 동일" if result.status == "모두 동일" else "중복 키 · 값 상이"
+            if result.status != "형식 변환 실패":
+                result.status = "중복 키 · 값 동일" if result.status == "모두 동일" else "중복 키 · 값 상이"
             result.duplicate_type = "N:M 대표 행"
             result.reason = f"대표 행 선택; {result.reason}"
+            result.outcome_flags = flags_for_status(result.status)
             return [result]
         return [ResultRow(key, self._key_display(key), "N:M 처리 필요", f"지원하지 않는 N:M 처리 방식: {policy}", len(group_a), len(group_b), rule_results=self._unavailable_rules(config, f"지원하지 않는 N:M 처리 방식: {policy}"))]
 
@@ -147,10 +189,12 @@ class ComparisonEngine:
             )
             if conversion_failed:
                 all_equal = False
+                failed_a = any(not self._compare_value(value, value, rule).conversion_success_a for value in values_a)
+                failed_b = any(not self._compare_value(value, value, rule).conversion_success_a for value in values_b)
                 rule_results.append(RuleResult(
                     rule.rule_id, rule.display_name, values_a, values_b,
                     normalized_a, normalized_b, "형식 변환 실패", "중복 값 중 변환할 수 없는 값이 있음",
-                    conversion_success_a=False, conversion_success_b=False,
+                    conversion_success_a=not failed_a, conversion_success_b=not failed_b,
                     comparison_method=mode, duplicate_policy=mode,
                 ))
                 continue
@@ -168,8 +212,15 @@ class ComparisonEngine:
                 equal = detail["equal"]
             all_equal &= equal
             rule_results.append(RuleResult(rule.rule_id, rule.display_name, values_a, values_b, normalized_a, normalized_b, "동일" if equal else "불일치", reason, comparison_method=mode, duplicate_policy=mode))
-        status = "중복 키 · 값 동일" if all_equal else "중복 키 · 값 상이"
-        return ResultRow(key, self._key_display(key), status, "; ".join(item.reason for item in rule_results), len(group_a), len(group_b), max((len(set(map(str, group_a[self._column_name(group_a, rule.column_a_id)].tolist()))) for rule in config.comparison_rules), default=0), max((len(set(map(str, group_b[self._column_name(group_b, rule.column_b_id)].tolist()))) for rule in config.comparison_rules), default=0), status, details={"mode": mode}, rule_results=rule_results)
+        status = "형식 변환 실패" if any(item.status == "형식 변환 실패" for item in rule_results) else ("중복 키 · 값 동일" if all_equal else "중복 키 · 값 상이")
+        trace = []
+        for side, frame in (("A", group_a), ("B", group_b)):
+            for ordinal, (_, source_row) in enumerate(frame.iterrows()):
+                for rule, rule_result in zip(config.comparison_rules, rule_results):
+                    original = source_row.get(rule.column_a_id if side == "A" else rule.column_b_id)
+                    normalized = rule_result.normalized_a if side == "A" else rule_result.normalized_b
+                    trace.append(TraceItem(side, rule.rule_id, ordinal, source_row.get("__row_id"), original, normalized, rule_result.status, rule_result.reason, rule_result.conversion_success_a if side == "A" else rule_result.conversion_success_b, rule_result.numeric_difference, rule_result.absolute_difference, rule_result.difference_rate).__dict__)
+        return ResultRow(key, self._key_display(key), status, "; ".join(item.reason for item in rule_results), len(group_a), len(group_b), max((len(set(map(str, group_a[self._column_name(group_a, rule.column_a_id)].tolist()))) for rule in config.comparison_rules), default=0), max((len(set(map(str, group_b[self._column_name(group_b, rule.column_b_id)].tolist()))) for rule in config.comparison_rules), default=0), status, details={"mode": mode, "trace": trace}, rule_results=rule_results)
 
     def _compare_rows(self, key: tuple[Any, ...], row_a: pd.Series, row_b: pd.Series, config: ComparisonConfig) -> ResultRow:
         results: list[RuleResult] = []
@@ -249,17 +300,16 @@ def result_rows_to_frame(rows: list[ResultRow]) -> pd.DataFrame:
             "중복 유형": row.duplicate_type, "A 행 식별자": row.row_id_a, "B 행 식별자": row.row_id_b,
         }
         if row.details:
-            base["중복 상세"] = str(row.details)
+            base["중복 상세"] = json.dumps(row.details, ensure_ascii=False, sort_keys=True, default=str)
         if not row.rule_results:
             output.append(base)
             continue
         for item in row.rule_results:
-            values = dict(base)
-            values.update({
-                f"{item.display_name} · A 원본값": item.original_a,
-                f"{item.display_name} · B 원본값": item.original_b,
-                f"{item.display_name} · A 정규화값": item.normalized_a,
-                f"{item.display_name} · B 정규화값": item.normalized_b,
+            base.update({
+                f"{item.display_name} · A 원본값": _json_value(item.original_a),
+                f"{item.display_name} · B 원본값": _json_value(item.original_b),
+                f"{item.display_name} · A 정규화값": _json_value(item.normalized_a),
+                f"{item.display_name} · B 정규화값": _json_value(item.normalized_b),
                 f"{item.display_name} · 결과": item.status,
                 f"{item.display_name} · 불일치 사유": item.reason,
                 f"{item.display_name} · 숫자 차이": item.numeric_difference,
@@ -270,24 +320,20 @@ def result_rows_to_frame(rows: list[ResultRow]) -> pd.DataFrame:
                 f"{item.display_name} · 비교 방식": item.comparison_method,
                 f"{item.display_name} · 중복 처리 방식": item.duplicate_policy,
             })
-            output.append(values)
+        output.append(base)
     return pd.DataFrame(output)
 
 
 def summarize(rows: list[ResultRow]) -> ComparisonSummary:
     by_status = Counter(row.status for row in rows)
-    comparable = sum(row.status in {"모두 동일", "일부 항목 불일치", "모든 항목 불일치", "1:N 비교", "N:1 비교", "중복 키 · 값 동일", "중복 키 · 값 상이"} for row in rows)
-    rowwise_identical = sum(
-        row.status in {"1:N 비교", "N:1 비교"}
-        and bool(row.rule_results)
-        and all(item.status == "동일" for item in row.rule_results)
-        for row in rows
-    )
-    rowwise_mismatch = sum(
-        row.status in {"1:N 비교", "N:1 비교"}
-        and any(item.status != "동일" for item in row.rule_results)
-        for row in rows
-    )
-    identical = by_status.get("모두 동일", 0) + by_status.get("중복 키 · 값 동일", 0) + rowwise_identical
-    mismatch = by_status.get("일부 항목 불일치", 0) + by_status.get("모든 항목 불일치", 0) + by_status.get("중복 키 · 값 상이", 0) + rowwise_mismatch
-    return ComparisonSummary(len(rows), comparable, identical, mismatch, by_status.get("데이터셋 A에만 존재", 0), by_status.get("데이터셋 B에만 존재", 0), sum("중복" in row.status for row in rows), by_status.get("형식 변환 실패", 0), by_status.get("N:M 처리 필요", 0), identical / comparable * 100 if comparable else 0.0, dict(by_status))
+    counts = summary_counts(rows)
+    comparable = counts["comparable"]
+    identical = counts["identical"]
+    mismatch = counts["mismatch"]
+    return ComparisonSummary(len(rows), comparable, identical, mismatch, counts["a_only"], counts["b_only"], counts["duplicate"], counts["conversion_failed"], counts["nm_pending"], identical / comparable * 100 if comparable else 0.0, dict(by_status))
+
+
+def _json_value(value: Any) -> Any:
+    if isinstance(value, (list, tuple, dict)):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+    return value

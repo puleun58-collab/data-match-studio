@@ -1,6 +1,6 @@
 # 범용 데이터 비교 스튜디오
 
-임의의 XLSX/XLSM/CSV 두 개를 사용자가 지정한 키와 비교 규칙으로 분석하는 Streamlit 웹앱입니다. 상품·주문·고객·재고·인사·회계 등 특정 업무나 파일명에 종속되지 않습니다.
+임의의 XLSX/XLSM/CSV 두 개를 사용자가 지정한 키와 비교 규칙으로 분석하는 데이터 비교 앱입니다. 로컬/Docker에서는 Streamlit과 순수 Python 엔진을 사용하고, Vercel에서는 정적 Next.js 앱이 브라우저 안에서만 파일을 처리합니다. 상품·주문·고객·재고·인사·회계 등 특정 업무나 파일명에 종속되지 않습니다.
 
 ## 구현 범위
 
@@ -20,6 +20,8 @@
 - 10개 결과 시트, 설정 시트, 요약 시트
 - JSON 템플릿 저장/불러오기
 - 순수 Python 비교 엔진과 Streamlit UI 분리
+- 정적 Vercel 배포용 Next.js/TypeScript 브라우저 엔진과 Web Worker 진행률/취소
+- Python↔TypeScript `ScalarV1` 태그 직렬화 및 공유 parser/status fixture
 
 ## 기술적 가정과 안전성
 
@@ -30,6 +32,9 @@
 - 병합 셀은 빈 셀로 해석될 수 있으므로 상위 행 미리보기와 헤더 직접 지정으로 확정합니다.
 - N:M은 명시적 정책 없이 결과를 생성하지 않습니다. 따라서 단순 조인에 의한 카테시안 폭증이 없습니다.
 - 1:N/N:1은 기본 차단이며 화면에서 행별 비교 허용을 명시해야 합니다.
+- Vercel 앱에는 API route, Server Action, 업로드 endpoint가 없습니다. 파일 바이트는 `File`/`ArrayBuffer`로 브라우저에서만 처리되고 서버로 전송하거나 저장하지 않습니다.
+- 브라우저 XLSX 로더는 ZIP 중앙 디렉터리를 먼저 검사하여 항목 수·압축/해제 크기·압축 비율·워크시트·shared strings 한도를 적용합니다. ZIP64, 안전하지 않은 경로, 매크로/XLSM, 수식, 손상/암호화 파일은 명시적으로 거부합니다.
+- 브라우저 parser 지원 범위는 UTF-8 CSV/TSV와 비수식 XLSX의 겹치는 셀로 제한됩니다. Python 로컬 경로가 지원하는 XLSM·비UTF 인코딩과 브라우저 parity를 과장하지 않습니다.
 - 기본 MVP는 pandas를 사용하지만, 엔진 입력/출력 경계가 DataFrame과 typed config로 분리되어 후속 Polars 어댑터를 추가할 수 있습니다.
 
 ## 구조
@@ -47,6 +52,9 @@ src/templates/                 # JSON 템플릿
 src/common/                    # 상수·검증·예외
 tests/                         # pytest 테스트
 sample_data/                   # 범용 샘플 생성기
+app/                           # 정적 Next.js 브라우저 UI
+web/src/                       # 브라우저 로더·엔진·worker·ScalarV1
+shared/                        # Python/TypeScript 공유 schema·fixture
 ```
 
 ## 로컬 실행
@@ -70,6 +78,19 @@ streamlit run app.py
 ```bash
 pytest -q
 ```
+
+## Vercel 정적 배포
+
+Node.js 20 이상에서 실행합니다.
+
+```bash
+npm install
+npm test
+npm run typecheck
+npm run build
+```
+
+Vercel 프로젝트의 Framework Preset은 **Next.js**로 두고 이 저장소를 그대로 연결합니다. `next.config.mjs`의 `output: "export"`와 `vercel.json`의 `outputDirectory: "out"` 때문에 단일 정적 배포만 생성됩니다. 별도 FastAPI 서버나 업로드 스토리지는 사용하지 않습니다. 브라우저 자원 한도를 넘는 파일은 서버 fallback 없이 사용자에게 명시적인 거부 진단을 표시합니다.
 
 샘플 파일 생성:
 

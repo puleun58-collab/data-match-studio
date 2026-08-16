@@ -7,12 +7,13 @@ from src.matching.key_builder import add_key_columns
 from src.models.config import ComparisonConfig, ComparisonRule, DatasetConfig, DuplicatePolicy, KeyNormalizationOptions, NullPolicy, ToleranceOptions
 
 
-def config(rules, nm_policy="error", allow=False):
+def config(rules, nm_policy="error", allow=False, join_type="outer"):
     return ComparisonConfig(
         DatasetConfig("a.csv", "csv", key_columns=["key"], key_normalization=KeyNormalizationOptions()),
         DatasetConfig("b.csv", "csv", key_columns=["key"], key_normalization=KeyNormalizationOptions()),
         duplicate_policy_a=DuplicatePolicy("A", allow_one_to_many=allow),
         duplicate_policy_b=DuplicatePolicy("B", allow_one_to_many=allow),
+        join_type=join_type,
         nm_policy=nm_policy,
         comparison_rules=rules,
     )
@@ -37,7 +38,7 @@ def test_one_to_one_outer_join_and_missing():
 
 
 def test_left_join_excludes_b_only():
-    rows = run([{"key": "a", "value": "x"}], [{"key": "a", "value": "x"}, {"key": "b", "value": "y"}], [rule()])
+    rows = run([{"key": "a", "value": "x"}], [{"key": "a", "value": "x"}, {"key": "b", "value": "y"}], [rule()], join_type="left")
     assert [row.key_display for row in rows] == ["a"]
 
 
@@ -70,12 +71,16 @@ def test_one_to_many_requires_explicit_permission_and_then_compares_rows():
     blocked = run([{"key": "a", "value": 100}], [{"key": "a", "value": 100}, {"key": "a", "value": 120}], [rule("number")])
     assert blocked[0].status == "중복 키"
     allowed = run([{"key": "a", "value": 100}], [{"key": "a", "value": 100}, {"key": "a", "value": 120}], [rule("number")], allow=True)
-    assert [row.status for row in allowed] == ["1:N 비교", "1:N 비교"]
+    assert len(allowed) == 1
+    assert allowed[0].status == "1:N 비교"
+    assert len(allowed[0].details["trace"]) >= 2
 
 
 def test_many_to_one_rowwise_comparison():
     rows = run([{"key": "a", "value": 100}, {"key": "a", "value": 120}], [{"key": "a", "value": 100}], [rule("number")], allow=True)
-    assert [row.status for row in rows] == ["N:1 비교", "N:1 비교"]
+    assert len(rows) == 1
+    assert rows[0].status == "N:1 비교"
+    assert len(rows[0].details["trace"]) >= 2
 
 
 def test_many_to_many_is_not_cartesian_and_requires_policy():
@@ -108,3 +113,20 @@ def test_summary_and_traceable_result_columns():
     assert "값 · A 원본값" in frame.columns
     assert "값 · A 정규화값" in frame.columns
     assert summarize(rows).mismatch == 1
+
+
+def test_multiple_rules_stay_on_one_result_row():
+    rules = [rule("text"), ComparisonRule("r2", "두 번째 값", "value2", "value2", "text")]
+    a = [{"key": "a", "value": "x", "value2": "y"}]
+    b = [{"key": "a", "value": "x", "value2": "z"}]
+    fa = add_key_columns(pd.DataFrame(a), ["key"], KeyNormalizationOptions())
+    fb = add_key_columns(pd.DataFrame(b), ["key"], KeyNormalizationOptions())
+    rows = ComparisonEngine().compare(fa, fb, ComparisonConfig(
+        DatasetConfig("a.csv", "csv", key_columns=["key"]),
+        DatasetConfig("b.csv", "csv", key_columns=["key"]),
+        comparison_rules=rules,
+    ))
+    frame = result_rows_to_frame(rows)
+    assert len(frame) == 1
+    assert "값 · 결과" in frame.columns
+    assert "두 번째 값 · 결과" in frame.columns

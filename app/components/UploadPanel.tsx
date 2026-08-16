@@ -1,0 +1,3 @@
+'use client';
+import type { Table } from '../../web/src/engine/contracts';
+export default function UploadPanel({ side, value, onChange }: { side: 'left' | 'right'; value?: { file: File; table?: Table; error?: string }; onChange: (file?: File) => void }) { return <section><h2>{side === 'left' ? 'First file' : 'Second file'}</h2><input type="file" accept=".csv,.tsv,.xlsx,.xlsm,.xls" onChange={e => onChange(e.target.files?.[0])} />{value && <p aria-live="polite">{value.file.name}{value.table ? ` — ${value.table.rows.length} rows` : ''}</p>}{value?.error && <pre role="alert">{value.error}</pre>}</section>; }

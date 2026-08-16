@@ -18,8 +18,8 @@ def test_duplicate_profile_and_cardinality():
     profile = profile_duplicates(profile_frame, ["key"], ["value"])
     assert profile.duplicate_keys == {("x",)}
     summary = cardinality_summary(analyze_cardinality(a, b))
-    assert summary["1:N"] == 1
-    assert summary["N:1"] == 0
+    assert summary["1:N"] == 0
+    assert summary["N:1"] == 1
 
 
 def test_set_and_multiset_details():

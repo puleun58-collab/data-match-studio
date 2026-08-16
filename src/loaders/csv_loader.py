@@ -36,10 +36,12 @@ class CsvLoader(BaseLoader):
         encoding = encoding or detect_encoding(payload)
         delimiter = delimiter or detect_delimiter(payload, encoding)
         try:
-            raw = pd.read_csv(
-                BytesIO(payload), header=None, dtype=object, encoding=encoding,
-                sep=delimiter, engine="python", on_bad_lines="error",
-            )
+            # Read rows explicitly so title rows with fewer cells than the
+            # actual header do not make pandas reject an otherwise valid CSV.
+            text = payload.decode(encoding)
+            rows = list(csv.reader(text.splitlines(), delimiter=delimiter, strict=True))
+            width = max((len(row) for row in rows), default=0)
+            raw = pd.DataFrame([row + [None] * (width - len(row)) for row in rows], dtype=object)
         except Exception as exc:
             raise FileValidationError(
                 "CSV 파일을 읽을 수 없습니다. 인코딩, 구분자 또는 파일 손상을 확인하세요."

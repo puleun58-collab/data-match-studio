@@ -10,6 +10,10 @@ venv/
 .env
 .streamlit/
 .gjc/
+node_modules/
+.next/
+out/
+*.tsbuildinfo
 *.log
 *.tmp
 *.bak

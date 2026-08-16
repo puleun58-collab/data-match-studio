@@ -1,0 +1,1 @@
+export default function ProgressPanel({ progress, onCancel }: { progress?: { completed: number; total: number }; onCancel: () => void }) { if (!progress) return null; return <section aria-live="polite"><progress value={progress.completed} max={progress.total} /> {progress.completed}/{progress.total}<button onClick={onCancel}>Cancel</button></section>; }

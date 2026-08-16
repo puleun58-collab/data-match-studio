@@ -1,0 +1,10 @@
+export type ScalarType = 'null' | 'string' | 'bool' | 'int' | 'float' | 'decimal' | 'date' | 'datetime' | 'nonfinite' | 'json';
+export type ScalarV1 = { version: 1; type: ScalarType; value: null | string | boolean | number | unknown[] | Record<string, unknown> };
+export type ParserFormat = 'csv' | 'tsv' | (string & {});
+export type DiagnosticCode = 'UNSUPPORTED_FORMAT' | 'UNSUPPORTED_ENCODING' | 'INVALID_DELIMITER' | 'INVALID_HEADER_OFFSET' | 'INVALID_UTF8' | 'MALFORMED_CSV' | 'EMPTY_INPUT' | 'RESOURCE_LIMIT' | 'CANCELLED' | 'FORMULA_REJECTED' | 'INVALID_TEMPLATE' | 'COMPARE_FAILED';
+export type Diagnostic = { code: DiagnosticCode; message: string; details?: Record<string, ScalarV1> };
+export type TraceEvent = { phase: string; message: string; row?: number; column?: number; details?: Record<string, ScalarV1> };
+export type Outcome<T> = { ok: true; value: T; diagnostics: Diagnostic[]; trace: TraceEvent[] } | { ok: false; diagnostics: Diagnostic[]; trace: TraceEvent[] };
+export type LoaderOptions = { format?: ParserFormat; delimiter?: string; headerOffset?: number; encoding?: 'utf-8' | 'utf-8-bom'; maxBytes?: number; maxRows?: number; maxColumns?: number; maxCells?: number };
+export type Table = { headers: string[]; rows: ScalarV1[][]; headerOffset: number; delimiter: string };
+export type LoaderResult = Outcome<Table>;

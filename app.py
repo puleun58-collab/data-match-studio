@@ -25,10 +25,20 @@ from src.models.config import (
     ToleranceOptions,
 )
 from src.profiling import detect_header_candidates, infer_types, profile_duplicates, profile_frame, profile_to_frame
-from src.templates import dump_template, load_template
+from src.templates import apply_column_remap, dump_template, load_template
 
 st.set_page_config(page_title="범용 데이터 비교", layout="wide")
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024
+
+
+@st.cache_data(show_spinner=False, ttl=300, max_entries=4)
+def cached_sheet_infos(file_name: str, payload: bytes):
+    return loader_for(file_name).sheets(payload)
+
+
+@st.cache_data(show_spinner=False, ttl=300, max_entries=4)
+def cached_load_frame(file_name: str, payload: bytes, sheet_name: str | None, header_row: int, data_start_row: int, encoding: str | None, delimiter: str | None, drop_empty_rows: bool, drop_empty_columns: bool) -> pd.DataFrame:
+    return loader_for(file_name).load(payload, sheet_name, header_row, data_start_row, encoding, delimiter, drop_empty_rows, drop_empty_columns)
 
 
 def make_column_refs(frame: pd.DataFrame, prefix: str) -> tuple[pd.DataFrame, list[ColumnRef]]:
@@ -58,8 +68,7 @@ def read_dataset(uploaded: Any, side: str) -> tuple[pd.DataFrame, list[ColumnRef
     payload = uploaded.getvalue()
     try:
         validate_upload(uploaded.name, len(payload), MAX_UPLOAD_BYTES)
-        loader = loader_for(uploaded.name)
-        sheet_infos = loader.sheets(payload)
+        sheet_infos = cached_sheet_infos(uploaded.name, payload)
         sheet_names = [item.name for item in sheet_infos]
         selected_sheet = st.selectbox(f"데이터셋 {side} 시트", sheet_names, key=f"sheet_{side}")
         selected_info = next(item for item in sheet_infos if item.name == selected_sheet)
@@ -79,7 +88,7 @@ def read_dataset(uploaded: Any, side: str) -> tuple[pd.DataFrame, list[ColumnRef
             delimiter = "\t" if delimiter == "탭" else delimiter
         with st.expander(f"데이터셋 {side} 원본 상위 20행", expanded=False):
             st.dataframe(selected_info.preview, use_container_width=True)
-        frame = loader.load(payload, selected_sheet, header_row, int(data_start), encoding, delimiter, drop_empty_rows, drop_empty_columns)
+        frame = cached_load_frame(uploaded.name, payload, selected_sheet, header_row, int(data_start), encoding, delimiter, drop_empty_rows, drop_empty_columns)
         prepared, refs = make_column_refs(frame, side.lower())
         config = DatasetConfig(
             file_name=uploaded.name,
@@ -152,6 +161,13 @@ def main() -> None:
     if not refs_a or not refs_b:
         st.error("데이터셋에 사용할 수 있는 열이 없습니다. 헤더 행과 데이터 영역을 확인하세요.")
         return
+    pending_template = st.session_state.pop("template_applied_config", None)
+    if pending_template is not None:
+        st.session_state.keys_a = [ref.display_name for ref in refs_a if ref.column_id in pending_template.dataset_a.key_columns]
+        st.session_state.keys_b = [ref.display_name for ref in refs_b if ref.column_id in pending_template.dataset_b.key_columns]
+        st.session_state.join_type = pending_template.join_type
+        st.session_state.nm_policy = pending_template.nm_policy
+        st.session_state.rules = [{"rule_id": rule.rule_id, "display_name": rule.display_name, "column_a_id": rule.column_a_id, "column_b_id": rule.column_b_id, "data_type": rule.data_type, "comparison_method": rule.comparison_method, "normalization_options": rule.normalization_options, "null_policy": rule.null_policy.__dict__, "tolerance_options": rule.tolerance_options.__dict__} for rule in pending_template.comparison_rules]
 
     tabs = st.tabs(["원본 미리보기", "데이터 품질", "키·중복 분석", "비교 규칙", "결과", "다운로드"])
     with tabs[0]:
@@ -172,7 +188,7 @@ def main() -> None:
         keys_a_labels = st.multiselect("A 키 열 (복합 키 가능)", labels_a, key="keys_a")
         keys_b_labels = st.multiselect("B 키 열 (복합 키 가능)", labels_b, key="keys_b")
         key_options = render_key_options("키 정규화")
-        join_type = st.selectbox("조인 방식", ["outer", "left", "right", "inner"], format_func=lambda x: {"outer": "전체 외부 조인", "left": "왼쪽 조인", "right": "오른쪽 조인", "inner": "내부 조인"}[x])
+        join_type = st.selectbox("조인 방식", ["outer", "left", "right", "inner"], key="join_type", format_func=lambda x: {"outer": "전체 외부 조인", "left": "왼쪽 조인", "right": "오른쪽 조인", "inner": "내부 조인"}[x])
         config_a.key_columns = [label_to_id_a[value] for value in keys_a_labels]
         config_b.key_columns = [label_to_id_b[value] for value in keys_b_labels]
         config_a.key_normalization = key_options
@@ -208,7 +224,7 @@ def main() -> None:
         st.header("4. 중복 키 정책")
         policy_a = render_duplicate_policy("A", refs_a)
         policy_b = render_duplicate_policy("B", refs_b)
-        nm_policy = st.selectbox("N:M 처리 방식", ["error", "set", "multiset", "aggregate", "representative"], format_func=lambda x: {"error": "중복 오류·처리 필요", "set": "고유값 집합 비교", "multiset": "멀티셋 비교", "aggregate": "집계 후 비교", "representative": "대표 행 선택"}[x])
+        nm_policy = st.selectbox("N:M 처리 방식", ["error", "set", "multiset", "aggregate", "representative"], key="nm_policy", format_func=lambda x: {"error": "중복 오류·처리 필요", "set": "고유값 집합 비교", "multiset": "멀티셋 비교", "aggregate": "집계 후 비교", "representative": "대표 행 선택"}[x])
 
     with tabs[3]:
         st.subheader("5. 비교 규칙")
@@ -287,10 +303,14 @@ def main() -> None:
             except Exception:
                 st.error("비교를 완료하지 못했습니다. 키, 비교 열, 중복 정책 설정을 확인하세요.")
         expectations = {
-            "A": {ref.column_id: ref.name for ref in refs_a},
-            "B": {ref.column_id: ref.name for ref in refs_b},
+            "A": [{"side": "A", "index": ref.index, "id": ref.column_id, "raw": ref.name, "display": ref.display_name, "normalized_name": ref.name.strip().casefold(), "sheet": config_a.sheet_name, "fingerprint": f"{config_a.file_name}:{ref.index}:{ref.name.strip().casefold()}", "occurrence": 0} for ref in refs_a],
+            "B": [{"side": "B", "index": ref.index, "id": ref.column_id, "raw": ref.name, "display": ref.display_name, "normalized_name": ref.name.strip().casefold(), "sheet": config_b.sheet_name, "fingerprint": f"{config_b.file_name}:{ref.index}:{ref.name.strip().casefold()}", "occurrence": 0} for ref in refs_b],
         }
         st.download_button("설정 JSON 저장", dump_template(config, expectations), file_name="comparison_template.json", mime="application/json")
+        if st.button("업로드·결과 캐시 즉시 삭제", key="clear_upload_cache"):
+            st.cache_data.clear()
+            st.session_state.results = None
+            st.success("현재 세션의 업로드 캐시와 결과를 삭제했습니다.")
         template = st.file_uploader("설정 JSON 불러오기", type=["json"], key="template")
         if template is not None:
             try:
@@ -298,11 +318,32 @@ def main() -> None:
                 raw_template = json.loads(template.getvalue())
                 st.info("템플릿을 읽었습니다. 아래 재매핑을 확인한 뒤 현재 화면의 키·규칙 선택에 적용하세요. 자동 선택은 하지 않습니다.")
                 expected = raw_template.get("column_expectations", {})
+                remap_choices: dict[str, str] = {}
                 for side, refs in (("A", refs_a), ("B", refs_b)):
                     st.markdown(f"**데이터셋 {side} 열 재매핑**")
                     candidates = ["(선택 안 함)"] + [ref.column_id for ref in refs]
-                    for old_id, old_name in expected.get(side, {}).items():
-                        st.selectbox(f"기대 열: {old_name} [{old_id}]", candidates, format_func=lambda value, refs=refs: ref_label(refs, value) if value != "(선택 안 함)" else value, key=f"remap_{side}_{old_id}")
+                    for item in _expectation_items(expected.get(side, {}), side):
+                        old_id, old_name = item["id"], item.get("display") or item.get("raw") or old_id
+                        default_index = candidates.index(old_id) if old_id in candidates else 0
+                        selected = st.selectbox(f"기대 열: {old_name} [{old_id}]", candidates, index=default_index, format_func=lambda value, refs=refs: ref_label(refs, value) if value != "(선택 안 함)" else value, key=f"remap_{side}_{old_id}")
+                        if selected != "(선택 안 함)": remap_choices[old_id] = selected
+                if st.button("템플릿 매핑 적용", key="apply_template"):
+                    required = set(loaded.dataset_a.key_columns + loaded.dataset_b.key_columns)
+                    required.update(rule.column_a_id for rule in loaded.comparison_rules)
+                    required.update(rule.column_b_id for rule in loaded.comparison_rules)
+                    required.update(value for value in (loaded.duplicate_policy_a.representative_sort_column, loaded.duplicate_policy_b.representative_sort_column) if value)
+                    missing = sorted(required - remap_choices.keys())
+                    if missing:
+                        st.error(f"필수 열 매핑이 누락되었습니다: {', '.join(missing)}")
+                    else:
+                        try:
+                            applied = apply_column_remap(loaded, remap_choices)
+                            st.session_state.template_applied_config = applied
+                            st.session_state.results = None
+                            st.success("템플릿 매핑을 적용했습니다.")
+                            st.rerun()
+                        except ValueError as exc:
+                            st.error(str(exc))
                 st.caption(f"키 A: {loaded.dataset_a.key_columns} · 키 B: {loaded.dataset_b.key_columns} · 규칙 수: {len(loaded.comparison_rules)}")
             except ValueError as exc:
                 st.error(str(exc))
@@ -355,6 +396,14 @@ def column_index(refs: list[ColumnRef], column_id: str) -> int:
     return next((index for index, ref in enumerate(refs) if ref.column_id == column_id), 0)
 
 
+def _expectation_items(raw: Any, side: str) -> list[dict[str, Any]]:
+    if isinstance(raw, list):
+        return [dict(item) for item in raw if isinstance(item, dict)]
+    if isinstance(raw, dict):
+        return [{"id": key, "side": side, "raw": value, "display": value} for key, value in raw.items()]
+    return []
+
+
 def render_results() -> None:
     payload = st.session_state.get("results")
     if not payload:
@@ -390,7 +439,7 @@ def render_downloads() -> None:
         return
     frame = result_rows_to_frame(payload["rows"])
     st.download_button("CSV 결과 다운로드", export_csv(frame), file_name="comparison_result.csv", mime="text/csv")
-    st.download_button("Excel 결과 다운로드", export_excel(payload["rows"], payload["config"], payload["quality"], payload["summary"].by_status), file_name="comparison_result.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    st.download_button("Excel 결과 다운로드", export_excel(payload["rows"], payload["config"], payload["quality"], payload["summary"]), file_name="comparison_result.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 if __name__ == "__main__":

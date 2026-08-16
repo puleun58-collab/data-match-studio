@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data-match-studio.dev/contracts/scalar-v1.schema.json",
+  "title": "ScalarV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "type", "value"],
+  "properties": {"version": {"const": 1}, "type": {"enum": ["null", "string", "bool", "int", "float", "decimal", "date", "datetime", "nonfinite", "json"]}, "value": {}},
+  "allOf": [
+    {"if": {"properties": {"type": {"const": "null"}}}, "then": {"properties": {"value": {"type": "null"}}}},
+    {"if": {"properties": {"type": {"const": "string"}}}, "then": {"properties": {"value": {"type": "string"}}}},
+    {"if": {"properties": {"type": {"const": "bool"}}}, "then": {"properties": {"value": {"type": "boolean"}}}},
+    {"if": {"properties": {"type": {"const": "int"}}}, "then": {"properties": {"value": {"type": "integer"}}}},
+    {"if": {"properties": {"type": {"const": "float"}}}, "then": {"properties": {"value": {"type": "number"}}}},
+    {"if": {"properties": {"type": {"const": "decimal"}}}, "then": {"properties": {"value": {"type": "string", "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"}}}},
+    {"if": {"properties": {"type": {"const": "date"}}}, "then": {"properties": {"value": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"}}}},
+    {"if": {"properties": {"type": {"const": "datetime"}}}, "then": {"properties": {"value": {"type": "string", "pattern": "^.*(Z|[+-][0-9]{2}:[0-9]{2})$"}}}},
+    {"if": {"properties": {"type": {"const": "nonfinite"}}}, "then": {"properties": {"value": {"enum": ["nan", "inf", "-inf"]}}}},
+    {"if": {"properties": {"type": {"const": "json"}}}, "then": {"properties": {"value": {"type": ["array", "object"]}}}}
+  ]
+}

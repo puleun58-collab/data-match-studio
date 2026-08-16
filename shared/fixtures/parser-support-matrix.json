@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "cells": [
+    {"format": "csv", "python": "supported", "browser": "supported", "encodings": ["utf-8", "utf-8-bom"], "delimiters": [",", ";", "\\t", "|"], "diagnostic": "Quoted fields and configurable header offset."},
+    {"format": "tsv", "python": "supported", "browser": "supported", "encodings": ["utf-8", "utf-8-bom"], "delimiters": ["\\t"], "diagnostic": "CSV parser configured with tab delimiter."},
+    {"format": "xlsx", "python": "supported", "browser": "supported-with-limits", "features": ["non-formula-cells", "first-selected-sheet", "shared-strings"], "diagnostic": "Browser ZIP central-directory preflight and resource caps run before XML allocation."},
+    {"format": "xlsm", "python": "supported-with-macro-disabled", "browser": "unsupported", "diagnostic": "Browser rejects macro-bearing archives; local Python reads workbook data without executing macros."},
+    {"format": "xls", "python": "unsupported", "browser": "unsupported", "diagnostic": "Legacy binary workbook format is outside the current parser matrix."},
+    {"format": "xlsx-formulas", "python": "supported-as-values", "browser": "unsupported", "diagnostic": "Browser rejects formula cells rather than evaluating or silently using cached values."},
+    {"format": "encrypted-or-corrupt-archive", "python": "rejected", "browser": "rejected", "diagnostic": "Explicit user-facing validation failure; no fallback upload path."}
+  ]
+}
