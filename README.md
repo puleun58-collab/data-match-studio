@@ -1,10 +1,8 @@
+**배포 주소: https://data-match-studio.vercel.app**
+
 # Data Match Studio
 
 Excel/CSV 파일과 워크시트를 키 기준으로 비교하는 데이터 비교 앱입니다. 파일명·시트명·컬럼명을 하드코딩하지 않으며, 업로드한 데이터는 브라우저 밖으로 전송하거나 저장하지 않습니다.
-
-## 배포 주소
-
-**https://data-match-studio.vercel.app**
 
 ## 주요 기능
 
