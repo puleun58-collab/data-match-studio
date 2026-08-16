@@ -261,7 +261,13 @@ export default function HomePage() {
       <header className="site-header">
         <Container className="site-header__inner">
           <a className="brand" href="#top" aria-label="Data Match Studio 홈">
-            <span className="brand__mark" aria-hidden="true">DM</span>
+            <span className="brand__mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M4 5.5h5M15 5.5h5M4 12h5M15 12h5M4 18.5h5" />
+                <path className="brand__connector" d="M10.5 5.5h3M10.5 12h3" />
+                <circle cx="17.5" cy="18.5" r="2.25" />
+              </svg>
+            </span>
             <span>Data Match Studio</span>
           </a>
           <nav className="primary-nav" aria-label="작업 단계">
