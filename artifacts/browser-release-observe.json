@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "kind": "browser-automation",
+  "tool": "browser_tool",
+  "url": "http://127.0.0.1:4173/",
+  "title": "",
+  "actions": [{"type": "open", "verb": "open", "url": "http://127.0.0.1:4173/", "timestamp": "2026-08-16T17:24:00Z"}, {"type": "observe", "verb": "observe", "selector": "main", "timestamp": "2026-08-16T17:24:01Z"}, {"type": "screenshot", "verb": "screenshot", "selector": "main", "timestamp": "2026-08-16T17:24:02Z"}],
+  "observed": ["Data Match Studio", "Compare files locally in your browser. File bytes never leave this page.", "First file", "Second file", "파일 선택"],
+  "verdict": "passed"
+}

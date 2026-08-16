@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "kind": "test-report",
-  "sourceHash": "sha256:e497080342971cadb0e1923d7f70f9212f029108068a895836c8071deecefb51",
+  "sourceHash": "sha256:a28365454b3c0530905276cbf2fefab3336ece11554041e2d737311a00eb5123",
   "status": "passed",
   "commands": [
     {"command": "cmd.exe /c \"C:\\Users\\soej7\\AppData\\Local\\Programs\\Python\\Python311\\python.exe -m pytest -q\"", "exitCode": 0, "status": "passed", "evidence": "30 passed in 3.09s"},
@@ -14,18 +14,19 @@
     {"command": "npx tsx -e '<template remap and null-policy assertions>'", "exitCode": 0, "status": "passed", "evidence": "Stale template reference diagnosed and emptyEqualsZero null policy matched empty with numeric zero."}
   ],
   "contractCoverage": [
-    {"id": "C1", "contractRef": "duplicate-and-cardinality", "obligation": "Duplicate 1:N/N:1 and N:M keys remain one result row; N:M never expands cartesian rows and requires policy.", "status": "covered", "surfaceEvidenceRefs": ["S1", "S4"], "adversarialCaseRefs": ["A1"]},
-    {"id": "C2", "contractRef": "one-row-per-key-and-provenance", "obligation": "One row per key retains original/normalized values, conversion status, and comparison provenance.", "status": "covered", "surfaceEvidenceRefs": ["S1"], "adversarialCaseRefs": ["A2"]},
-    {"id": "C3", "contractRef": "ScalarV1", "obligation": "Malformed tagged scalar envelopes are rejected deterministically.", "status": "covered", "surfaceEvidenceRefs": ["S2"], "adversarialCaseRefs": ["A3"]},
-    {"id": "C4", "contractRef": "template-safety", "obligation": "Stale/ambiguous template column references do not apply silently.", "status": "covered", "surfaceEvidenceRefs": ["S4"], "adversarialCaseRefs": ["A4"]},
-    {"id": "C5", "contractRef": "parser-resource-safety", "obligation": "Malformed/oversized CSV and ZIP, encryption, unsafe paths, formulas, macros, and decompression/resource limits produce diagnostics.", "status": "covered", "surfaceEvidenceRefs": ["S2", "S4"], "adversarialCaseRefs": ["A5"]},
-    {"id": "C6", "contractRef": "static-client-boundary", "obligation": "No API route/server action/server fallback or fetch upload exists.", "status": "covered", "surfaceEvidenceRefs": ["S2"], "adversarialCaseRefs": ["A6"]},
-    {"id": "C7", "contractRef": "browser-result-contract", "obligation": "Browser summary/result rows and CSV/JSON download shape are deterministic.", "status": "covered", "surfaceEvidenceRefs": ["S2"], "adversarialCaseRefs": ["A7"]},
-    {"id": "C8", "contractRef": "cancellation-and-guards", "obligation": "Worker cancellation protocol and loader row/byte/cell guards are present and exercised by bounded checks.", "status": "covered", "surfaceEvidenceRefs": ["S2", "S3"], "adversarialCaseRefs": ["A8"]}
+    {"id": "C1", "contractRef": "duplicate-and-cardinality", "obligation": "Duplicate 1:N/N:1 and N:M keys remain one result row; N:M never expands cartesian rows and requires policy.", "status": "covered", "artifactRefs": ["QA1"], "adversarialCaseRefs": ["A1"]},
+    {"id": "C2", "contractRef": "one-row-per-key-and-provenance", "obligation": "One row per key retains original/normalized values, conversion status, and comparison provenance.", "status": "covered", "artifactRefs": ["QA1"]},
+    {"id": "C9", "contractRef": "conversion-provenance", "obligation": "Malformed rule values report conversion failure with side-specific conversion provenance.", "status": "covered", "artifactRefs": ["QA1"], "adversarialCaseRefs": ["A2"]},
+    {"id": "C3", "contractRef": "ScalarV1", "obligation": "Malformed tagged scalar envelopes are rejected deterministically.", "status": "covered", "artifactRefs": ["QA1"], "adversarialCaseRefs": ["A3"]},
+    {"id": "C4", "contractRef": "template-safety", "obligation": "Stale/ambiguous template column references do not apply silently.", "status": "covered", "artifactRefs": ["QA1"], "adversarialCaseRefs": ["A4"]},
+    {"id": "C5", "contractRef": "parser-resource-safety", "obligation": "Malformed/oversized CSV and ZIP, encryption, unsafe paths, formulas, macros, and decompression/resource limits produce diagnostics.", "status": "covered", "artifactRefs": ["QA1"], "adversarialCaseRefs": ["A5"]},
+    {"id": "C6", "contractRef": "static-client-boundary", "obligation": "No API route/server action/server fallback or fetch upload exists.", "status": "covered", "artifactRefs": ["QA1"], "adversarialCaseRefs": ["A6"]},
+    {"id": "C7", "contractRef": "browser-result-contract", "obligation": "Browser summary/result rows and CSV/JSON download shape are deterministic.", "status": "covered", "artifactRefs": ["QA1"], "adversarialCaseRefs": ["A7"]},
+    {"id": "C8", "contractRef": "cancellation-and-guards", "obligation": "Worker cancellation protocol and loader row/byte/cell guards are present and exercised by bounded checks.", "status": "covered", "artifactRefs": ["QA1"], "adversarialCaseRefs": ["A8"]}
   ],
   "surfaceEvidence": [
     {"id": "S1", "contractRef": "python-engine", "surface": "Python tests", "invocation": "python.exe -m pytest -q", "verdict": "passed", "artifactRefs": ["QA1"]},
-    {"id": "S2", "contractRef": "browser-static-app", "surface": "TypeScript/browser", "invocation": "npm run static-check && npm test && npm run typecheck && npm run build", "verdict": "passed", "artifactRefs": ["QA1"]},
+    {"id": "S2", "contractRef": "browser-static-app", "surface": "TypeScript/browser", "invocation": "npm run static-check && npm test && npm run typecheck && npm run build", "verdict": "passed", "artifactRefs": ["QA1", "BROWSER1", "SCREENSHOT1"]},
     {"id": "S3", "contractRef": "streamlit-runtime", "surface": "Streamlit", "invocation": "python.exe -m streamlit run app.py --server.headless true --server.port 8511 (bounded)", "verdict": "passed", "artifactRefs": ["QA1"]},
     {"id": "S4", "contractRef": "red-team-scripts", "surface": "safe inline Python/TypeScript scripts", "invocation": "duplicate/conversion/template/loader and ZIP preflight adversarial assertions", "verdict": "passed", "artifactRefs": ["QA1"]}
   ],
@@ -41,6 +42,8 @@
   ],
   "artifactRefs": [
     {"id": "QA1", "kind": "test-report", "path": "artifacts/ultragoal-qa-report.json", "description": "Final focused command and red-team evidence."}
+    ,{"id": "BROWSER1", "kind": "browser-automation", "path": "artifacts/browser-release-observe.json", "description": "Chromium observe pass against the built static app; title, privacy boundary text, and both file controls were observed."}
+    ,{"id": "SCREENSHOT1", "kind": "screenshot", "path": "artifacts/browser-release.png", "description": "Chromium screenshot of the static landing page captured during release QA."}
   ],
   "blockers": []
 }
