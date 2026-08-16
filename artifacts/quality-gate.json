@@ -1,0 +1,393 @@
+{
+  "architectReview": {
+    "architectureStatus": "CLEAR",
+    "productStatus": "CLEAR",
+    "codeStatus": "CLEAR",
+    "recommendation": "APPROVE",
+    "evidence": "Generation 17 architect review CLEAR/APPROVE; final post-QA gate CLEAR/APPROVE.",
+    "commands": [
+      "gjc ultragoal review"
+    ],
+    "blockers": []
+  },
+  "executorQa": {
+    "schemaVersion": 1,
+    "kind": "test-report",
+    "sourceHash": "sha256:a28365454b3c0530905276cbf2fefab3336ece11554041e2d737311a00eb5123",
+    "status": "passed",
+    "commands": [
+      {
+        "command": "cmd.exe /c \"C:\\Users\\soej7\\AppData\\Local\\Programs\\Python\\Python311\\python.exe -m pytest -q\"",
+        "exitCode": 0,
+        "status": "passed",
+        "evidence": "30 passed in 3.09s"
+      },
+      {
+        "command": "npm run static-check",
+        "exitCode": 0,
+        "status": "passed",
+        "evidence": "Static client-only boundary passed."
+      },
+      {
+        "command": "npm test",
+        "exitCode": 0,
+        "status": "passed",
+        "evidence": "8 tests passed, 0 failed."
+      },
+      {
+        "command": "npm run typecheck",
+        "exitCode": 0,
+        "status": "passed",
+        "evidence": "tsc --noEmit completed successfully."
+      },
+      {
+        "command": "npm run build",
+        "exitCode": 0,
+        "status": "passed",
+        "evidence": "Next.js static export generated / and /_not-found."
+      },
+      {
+        "command": "cmd.exe /c \"C:\\Users\\soej7\\AppData\\Local\\Programs\\Python\\Python311\\python.exe -m streamlit run app.py --server.headless true --server.port 8512\" (20s bound)",
+        "exitCode": null,
+        "status": "passed",
+        "evidence": "Uvicorn server started on :::8512 and reported http://localhost:8512 before bounded timeout."
+      },
+      {
+        "command": "PATH=C:\\Users\\soej7\\AppData\\Local\\Programs\\Python\\Python311\\Scripts;%PATH% && streamlit run app.py --server.headless true --server.port 8513 (20s bound)",
+        "exitCode": null,
+        "status": "passed",
+        "evidence": "Exact Streamlit executable started Uvicorn on :::8513 and reported http://localhost:8513 before bounded timeout."
+      },
+      {
+        "command": "npx tsx -e '<template remap and null-policy assertions>'",
+        "exitCode": 0,
+        "status": "passed",
+        "evidence": "Stale template reference diagnosed and emptyEqualsZero null policy matched empty with numeric zero."
+      }
+    ],
+    "contractCoverage": [
+      {
+        "id": "C1",
+        "contractRef": "duplicate-and-cardinality",
+        "obligation": "Duplicate 1:N/N:1 and N:M keys remain one result row; N:M never expands cartesian rows and requires policy.",
+        "status": "covered",
+        "artifactRefs": [
+          "QA1"
+        ],
+        "adversarialCaseRefs": [
+          "A1"
+        ]
+      },
+      {
+        "id": "C2",
+        "contractRef": "one-row-per-key-and-provenance",
+        "obligation": "One row per key retains original/normalized values, conversion status, and comparison provenance.",
+        "status": "covered",
+        "artifactRefs": [
+          "QA1"
+        ]
+      },
+      {
+        "id": "C9",
+        "contractRef": "conversion-provenance",
+        "obligation": "Malformed rule values report conversion failure with side-specific conversion provenance.",
+        "status": "covered",
+        "artifactRefs": [
+          "QA1"
+        ],
+        "adversarialCaseRefs": [
+          "A2"
+        ]
+      },
+      {
+        "id": "C3",
+        "contractRef": "ScalarV1",
+        "obligation": "Malformed tagged scalar envelopes are rejected deterministically.",
+        "status": "covered",
+        "artifactRefs": [
+          "QA1"
+        ],
+        "adversarialCaseRefs": [
+          "A3"
+        ]
+      },
+      {
+        "id": "C4",
+        "contractRef": "template-safety",
+        "obligation": "Stale/ambiguous template column references do not apply silently.",
+        "status": "covered",
+        "artifactRefs": [
+          "QA1"
+        ],
+        "adversarialCaseRefs": [
+          "A4"
+        ]
+      },
+      {
+        "id": "C5",
+        "contractRef": "parser-resource-safety",
+        "obligation": "Malformed/oversized CSV and ZIP, encryption, unsafe paths, formulas, macros, and decompression/resource limits produce diagnostics.",
+        "status": "covered",
+        "artifactRefs": [
+          "QA1"
+        ],
+        "adversarialCaseRefs": [
+          "A5"
+        ]
+      },
+      {
+        "id": "C6",
+        "contractRef": "static-client-boundary",
+        "obligation": "No API route/server action/server fallback or fetch upload exists.",
+        "status": "covered",
+        "artifactRefs": [
+          "QA1"
+        ],
+        "adversarialCaseRefs": [
+          "A6"
+        ]
+      },
+      {
+        "id": "C7",
+        "contractRef": "browser-result-contract",
+        "obligation": "Browser summary/result rows and CSV/JSON download shape are deterministic.",
+        "status": "covered",
+        "artifactRefs": [
+          "QA1"
+        ],
+        "adversarialCaseRefs": [
+          "A7"
+        ]
+      },
+      {
+        "id": "C8",
+        "contractRef": "cancellation-and-guards",
+        "obligation": "Worker cancellation protocol and loader row/byte/cell guards are present and exercised by bounded checks.",
+        "status": "covered",
+        "artifactRefs": [
+          "QA1"
+        ],
+        "adversarialCaseRefs": [
+          "A8"
+        ]
+      }
+    ],
+    "surfaceEvidence": [
+      {
+        "id": "S1",
+        "contractRef": "python-engine",
+        "surface": "Python tests",
+        "invocation": "python.exe -m pytest -q",
+        "verdict": "passed",
+        "artifactRefs": [
+          "QA1"
+        ]
+      },
+      {
+        "id": "S2",
+        "contractRef": "browser-static-app",
+        "surface": "TypeScript/browser",
+        "invocation": "npm run static-check && npm test && npm run typecheck && npm run build",
+        "verdict": "passed",
+        "artifactRefs": [
+          "QA1",
+          "BROWSER1",
+          "SCREENSHOT1"
+        ]
+      },
+      {
+        "id": "S3",
+        "contractRef": "streamlit-runtime",
+        "surface": "Streamlit",
+        "invocation": "python.exe -m streamlit run app.py --server.headless true --server.port 8511 (bounded)",
+        "verdict": "passed",
+        "artifactRefs": [
+          "QA1"
+        ]
+      },
+      {
+        "id": "S4",
+        "contractRef": "red-team-scripts",
+        "surface": "safe inline Python/TypeScript scripts",
+        "invocation": "duplicate/conversion/template/loader and ZIP preflight adversarial assertions",
+        "verdict": "passed",
+        "artifactRefs": [
+          "QA1"
+        ]
+      }
+    ],
+    "adversarialCases": [
+      {
+        "id": "A1",
+        "contractRef": "duplicate-and-cardinality",
+        "scenario": "2 left rows and 3 right rows for one key.",
+        "expectedBehavior": "Exactly one N:M pending result row, no cartesian expansion.",
+        "verdict": "passed",
+        "artifactRefs": [
+          "QA1"
+        ]
+      },
+      {
+        "id": "A2",
+        "contractRef": "conversion-provenance",
+        "scenario": "Malformed numeric value versus numeric value.",
+        "expectedBehavior": "Conversion-failure status with per-rule conversion_success_a=false and conversion_success_b=true.",
+        "verdict": "passed",
+        "artifactRefs": [
+          "QA1"
+        ]
+      },
+      {
+        "id": "A3",
+        "contractRef": "ScalarV1",
+        "scenario": "NaN float and naive datetime envelopes.",
+        "expectedBehavior": "Decoder throws; covered by npm test.",
+        "verdict": "passed",
+        "artifactRefs": [
+          "QA1"
+        ]
+      },
+      {
+        "id": "A4",
+        "contractRef": "template-safety",
+        "scenario": "Template references missing column id.",
+        "expectedBehavior": "Remap returns stale diagnostic and leaves original config unchanged.",
+        "verdict": "passed",
+        "artifactRefs": [
+          "QA1"
+        ]
+      },
+      {
+        "id": "A5",
+        "contractRef": "parser-resource-safety",
+        "scenario": "Malformed CSV, invalid header, invalid XLSX bytes; browser ZIP encrypted entry, macro path, unsafe path; oversized CSV fixture.",
+        "expectedBehavior": "Explicit validation/resource/security diagnostics before table parsing.",
+        "verdict": "passed",
+        "artifactRefs": [
+          "QA1"
+        ]
+      },
+      {
+        "id": "A6",
+        "contractRef": "static-client-boundary",
+        "scenario": "Static boundary scan and app/api absence.",
+        "expectedBehavior": "No forbidden route/fetch/server surface.",
+        "verdict": "passed",
+        "artifactRefs": [
+          "QA1"
+        ]
+      },
+      {
+        "id": "A7",
+        "contractRef": "browser-result-contract",
+        "scenario": "Browser contract tests exercise one-row result, statuses, summary fields, and serialization/download modules.",
+        "expectedBehavior": "Stable result and export shape.",
+        "verdict": "passed",
+        "artifactRefs": [
+          "QA1"
+        ]
+      },
+      {
+        "id": "A8",
+        "contractRef": "cancellation-and-guards",
+        "scenario": "CSV maxRows/maxBytes guards and worker cancellation protocol inspection exercised by browser checks.",
+        "expectedBehavior": "Resource limits reject early; cancelled request emits no result.",
+        "verdict": "passed",
+        "artifactRefs": [
+          "QA1"
+        ]
+      }
+    ],
+    "artifactRefs": [
+      {
+        "id": "QA1",
+        "kind": "test-report",
+        "path": "artifacts/ultragoal-qa-report.json",
+        "description": "Final focused command and red-team evidence."
+      },
+      {
+        "id": "BROWSER1",
+        "kind": "browser-automation",
+        "path": "artifacts/browser-release-observe.json",
+        "description": "Chromium observe pass against the built static app; title, privacy boundary text, and both file controls were observed."
+      },
+      {
+        "id": "SCREENSHOT1",
+        "kind": "screenshot",
+        "path": "artifacts/browser-release.png",
+        "description": "Chromium screenshot of the static landing page captured during release QA."
+      }
+    ],
+    "blockers": [],
+    "e2eStatus": "passed",
+    "redTeamStatus": "passed",
+    "evidence": "Final release QA passed all Python/browser/static/Streamlit and browser automation checks.",
+    "e2eCommands": [
+      "cmd.exe /c \"C:\\Users\\soej7\\AppData\\Local\\Programs\\Python\\Python311\\python.exe -m pytest -q\"",
+      "npm run static-check",
+      "npm test",
+      "npm run typecheck",
+      "npm run build",
+      "cmd.exe /c \"C:\\Users\\soej7\\AppData\\Local\\Programs\\Python\\Python311\\python.exe -m streamlit run app.py --server.headless true --server.port 8512\" (20s bound)",
+      "PATH=C:\\Users\\soej7\\AppData\\Local\\Programs\\Python\\Python311\\Scripts;%PATH% && streamlit run app.py --server.headless true --server.port 8513 (20s bound)",
+      "npx tsx -e '<template remap and null-policy assertions>'"
+    ],
+    "redTeamCommands": [
+      "inline adversarial assertions"
+    ]
+  },
+  "criticReview": {
+    "verdict": "OKAY",
+    "evidence": "critic approved final aggregate",
+    "blockers": []
+  },
+  "iteration": {
+    "status": "passed",
+    "evidence": "Final source-matched QA and architect review passed.",
+    "fullRerun": true,
+    "reviewCohort": {
+      "reviewGeneration": 17,
+      "sourceHash": "sha256:a28365454b3c0530905276cbf2fefab3336ece11554041e2d737311a00eb5123",
+      "joined": true,
+      "lanes": {
+        "cleaner": {
+          "status": "passed",
+          "sourceHash": "sha256:a28365454b3c0530905276cbf2fefab3336ece11554041e2d737311a00eb5123",
+          "evidence": "git status clean",
+          "blockers": []
+        },
+        "architect": {
+          "status": "CLEAR",
+          "sourceHash": "sha256:a28365454b3c0530905276cbf2fefab3336ece11554041e2d737311a00eb5123",
+          "evidence": "Generation 17 architect CLEAR/APPROVE",
+          "blockers": []
+        },
+        "qa": {
+          "status": "passed",
+          "sourceHash": "sha256:a28365454b3c0530905276cbf2fefab3336ece11554041e2d737311a00eb5123",
+          "evidence": "Final release QA passed",
+          "blockers": []
+        }
+      },
+      "deltaOnly": true,
+      "priorGenerationSourceHash": "sha256:e497080342971cadb0e1923d7f70f9212f029108068a895836c8071deecefb51",
+      "deltaPaths": [
+        "app/page.tsx",
+        "artifacts/ultragoal-qa-report.json",
+        "artifacts/browser-release-observe.json",
+        "artifacts/browser-release.png"
+      ]
+    },
+    "rerunCommands": [
+      "cmd.exe /c \"C:\\Users\\soej7\\AppData\\Local\\Programs\\Python\\Python311\\python.exe -m pytest -q\"",
+      "npm run static-check",
+      "npm test",
+      "npm run typecheck",
+      "npm run build",
+      "cmd.exe /c \"C:\\Users\\soej7\\AppData\\Local\\Programs\\Python\\Python311\\python.exe -m streamlit run app.py --server.headless true --server.port 8512\" (20s bound)",
+      "PATH=C:\\Users\\soej7\\AppData\\Local\\Programs\\Python\\Python311\\Scripts;%PATH% && streamlit run app.py --server.headless true --server.port 8513 (20s bound)",
+      "npx tsx -e '<template remap and null-policy assertions>'"
+    ],
+    "blockers": []
+  }
+}
