@@ -916,12 +916,18 @@ select[multiple] option {
 .setup-options {
   display: grid;
   grid-template-columns: minmax(14rem, 1fr) minmax(28rem, 1fr);
+  grid-template-areas: "case-sensitive duplicate-policy";
   gap: clamp(2rem, 5vw, 4.5rem);
   width: 100%;
   align-items: start;
 }
 
+.setup-options > .checkbox-label {
+  grid-area: case-sensitive;
+}
+
 .duplicate-policy-control {
+  grid-area: duplicate-policy;
   display: grid;
   gap: var(--space-4);
   min-width: 0;
@@ -976,12 +982,14 @@ select[multiple] option {
 }
 
 .checkbox-label {
-  display: flex;
-  min-height: 2.9rem;
-  align-items: center;
+  display: grid;
+  grid-template-columns: 1.18rem minmax(0, 1fr);
+  align-items: start;
   gap: var(--space-3);
-  font-size: 0.9rem;
-  font-weight: 650;
+  color: var(--color-ink);
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: normal;
 }
 
 .checkbox-label input,
@@ -1609,6 +1617,12 @@ summary {
   .rule-grid,
   .summary-primary {
     grid-template-columns: 1fr;
+  }
+
+  .setup-options {
+    grid-template-areas:
+      "case-sensitive"
+      "duplicate-policy";
   }
 
   .rule-policy-editor__body {
