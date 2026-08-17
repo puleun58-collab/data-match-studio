@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useMemo, useState } from 'react';
-import type { ComparisonResult } from '../../web/src/engine/comparisonEngine';
+import type { ComparisonResult, ComparisonRule } from '../../web/src/engine/comparisonEngine';
 import { decodeScalar } from '../../web/src/engine/serialization';
 import { downloadResultCsv, downloadResultJson, downloadResultXlsx } from '../../web/src/export/download';
 import { Button, Field, Heading, Section, StateMessage } from './ui';
@@ -28,10 +28,12 @@ function comparisonValues(
   side: 'A' | 'B',
   duplicatePolicy = 'set',
   aggregationMethod: 'sum' | 'mean' | 'min' | 'max' | 'count' | 'nunique' | 'concat_unique' = 'sum',
+  ruleId?: string,
 ): string {
   const selectedRow = side === 'A' ? resultRow.provenance.leftRow : resultRow.provenance.rightRow;
   const traces = resultRow.trace
     .filter(item => item.side === side && item.ruleId !== 'row')
+    .filter(item => !ruleId || item.ruleId === ruleId)
     .filter(item => duplicatePolicy !== 'representative' || item.rowIndex === selectedRow);
   const values = traces
     .flatMap(item => item.originalValues.map(value => decodeScalar(value)))
@@ -80,13 +82,14 @@ function comparisonValues(
 
 type Props = {
   result?: ComparisonResult;
+  rules?: ComparisonRule[];
   onRetry: () => void;
   isReady: boolean;
   duplicatePolicy?: string;
   aggregationMethod?: 'sum' | 'mean' | 'min' | 'max' | 'count' | 'nunique' | 'concat_unique';
 };
 
-export default function ResultsPanel({ result, onRetry, isReady, duplicatePolicy = 'set', aggregationMethod = 'sum' }: Props) {
+export default function ResultsPanel({ result, rules = [], onRetry, isReady, duplicatePolicy = 'set', aggregationMethod = 'sum' }: Props) {
   const [status, setStatus] = useState('all');
   const [query, setQuery] = useState('');
   const queryId = useId();
@@ -122,6 +125,9 @@ export default function ResultsPanel({ result, onRetry, isReady, duplicatePolicy
   const firstBlank = blankRows.filter(row => row.aCount > 0).length;
   const secondBlank = blankRows.filter(row => row.bCount > 0).length;
   const matchRate = matched + mismatched ? matched / (matched + mismatched) * 100 : 0;
+  const conversionRuleNames = rules
+    .filter(rule => validRows.some(row => row.status === 'conversion-failed' && row.trace.some(trace => trace.ruleId === rule.id && !trace.conversionSuccess)))
+    .map(rule => `${String(rule.columnA)} ↔ ${String(rule.columnB)}`);
   const otherDiagnostics = result.diagnostics.filter(diagnostic => diagnostic.code !== 'INVALID_KEY');
   const hasErrorOnly = !result.rows.length && otherDiagnostics.length > 0;
 
@@ -166,6 +172,12 @@ export default function ResultsPanel({ result, onRetry, isReady, duplicatePolicy
             </StateMessage>
           ) : null}
 
+          {result.summary.conversionFailed > 0 ? (
+            <StateMessage title="비교값의 형식 변환을 확인해주세요" tone="warning" role="alert" action={<Button onClick={() => document.querySelector('#comparison-setup')?.scrollIntoView()}>규칙 확인</Button>}>
+              {conversionRuleNames.length ? `${conversionRuleNames.join(', ')} 규칙에서 ` : ''}선택한 데이터 유형으로 바꿀 수 없는 값이 있습니다. `월대`처럼 문자인 값이나 `11.5 ton`처럼 단위가 포함된 값은 문자 유형으로 비교하거나 원본에서 단위를 분리해주세요.
+            </StateMessage>
+          ) : null}
+
           {validRows.length ? (
             <>
               <div className="result-toolbar" aria-label="결과 필터와 다운로드">
@@ -194,8 +206,7 @@ export default function ResultsPanel({ result, onRetry, isReady, duplicatePolicy
                         <th scope="col">Lane 키</th>
                         <th scope="col">일치 여부</th>
                         <th scope="col">Lane별 데이터 건수</th>
-                        <th scope="col">첫 번째 시트 비교값</th>
-                        <th scope="col">두 번째 시트 비교값</th>
+                        <th scope="col">규칙별 시트 비교값</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -204,8 +215,34 @@ export default function ResultsPanel({ result, onRetry, isReady, duplicatePolicy
                           <th scope="row">{row.key.map(value => String(decodeScalar(value))).join(' / ')}</th>
                           <td><span className={`status-badge status-badge--${row.status}`}>{statusLabels[row.status] ?? row.displayStatus}</span></td>
                           <td>첫 시트 {row.aCount.toLocaleString('ko-KR')}건 / 두 번째 시트 {row.bCount.toLocaleString('ko-KR')}건</td>
-                          <td>{comparisonValues(row, 'A', duplicatePolicy, aggregationMethod)}</td>
-                          <td>{comparisonValues(row, 'B', duplicatePolicy, aggregationMethod)}</td>
+                          <td>
+                            <div className="rule-value-pairs">
+                              {rules.length ? rules.map((rule, ruleIndex) => {
+                                const traces = row.trace.filter(trace => trace.ruleId === rule.id);
+                                const conversionFailed = traces.some(trace => !trace.conversionSuccess);
+                                return (
+                                  <div className={conversionFailed ? 'rule-value-pair rule-value-pair--error' : 'rule-value-pair'} key={rule.id}>
+                                    <div className="rule-value-pair__heading">
+                                      <span>{ruleIndex + 1}</span>
+                                      <strong>{String(rule.columnA)} ↔ {String(rule.columnB)}</strong>
+                                      {conversionFailed ? <em>형식 변환 실패</em> : null}
+                                    </div>
+                                    <div className="rule-value-pair__values">
+                                      <div><small>첫 번째 시트</small><span>{comparisonValues(row, 'A', duplicatePolicy, aggregationMethod, rule.id)}</span></div>
+                                      <span className="rule-value-pair__arrow" aria-hidden="true">↔</span>
+                                      <div><small>두 번째 시트</small><span>{comparisonValues(row, 'B', duplicatePolicy, aggregationMethod, rule.id)}</span></div>
+                                    </div>
+                                  </div>
+                                );
+                              }) : (
+                                <div className="rule-value-pair__values">
+                                  <div><small>첫 번째 시트</small><span>{comparisonValues(row, 'A', duplicatePolicy, aggregationMethod)}</span></div>
+                                  <span className="rule-value-pair__arrow" aria-hidden="true">↔</span>
+                                  <div><small>두 번째 시트</small><span>{comparisonValues(row, 'B', duplicatePolicy, aggregationMethod)}</span></div>
+                                </div>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

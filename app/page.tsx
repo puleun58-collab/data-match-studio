@@ -77,6 +77,7 @@ export default function HomePage() {
   const [caseSensitive, setCaseSensitive] = useState(true);
   const [policy, setPolicy] = useState('set');
   const [result, setResult] = useState<ComparisonResult>();
+  const [resultRules, setResultRules] = useState<ComparisonRule[]>([]);
   const [progress, setProgress] = useState<{ completed: number; total: number }>();
   const [templateMessage, setTemplateMessage] = useState<TemplateMessage>();
   const worker = useRef<Worker | null>(null);
@@ -121,6 +122,7 @@ export default function HomePage() {
     }
     setRules([]);
     setResult(undefined);
+    setResultRules([]);
     setTemplateMessage(undefined);
   }
 
@@ -172,6 +174,7 @@ export default function HomePage() {
     setResult(undefined);
     setProgress({ completed: 0, total: left.table.rows.length + right.table.rows.length });
     const effectiveRules = rules.length ? rules : compare.map((column, index) => ({ id: `rule-${index + 1}`, columnA: column, columnB: compareB[index], aggregationMethod, nullPolicy }));
+    setResultRules(effectiveRules);
     const config: ComparisonConfig = {
       keyColumns: keys,
       keyColumnsB: keysB,
@@ -435,7 +438,7 @@ export default function HomePage() {
             )}
 
             <ProgressPanel progress={progress} onCancel={cancel} />
-            {!progress ? <ResultsPanel result={result} onRetry={run} isReady={canRun} duplicatePolicy={policy} aggregationMethod={aggregationMethod} /> : null}
+            {!progress ? <ResultsPanel result={result} rules={resultRules} onRetry={run} isReady={canRun} duplicatePolicy={policy} aggregationMethod={aggregationMethod} /> : null}
           </div>
 
           <footer className="site-footer">
