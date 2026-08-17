@@ -12,6 +12,16 @@ Excel, CSV, TSV 파일을 키 기준으로 비교하는 데이터 비교 앱입�
 4. 데이터 유형, 빈 값 처리, 영문 대소문자 구분, 중복 키 비교 기준을 설정합니다.
 5. 비교를 실행하고 결과를 검색·필터링하거나 CSV, JSON, XLSX로 내려받습니다.
 
+## 화면 미리보기
+
+### 메인 화면
+
+두 파일을 브라우저 안에서 안전하게 비교하고 결과를 내려받을 수 있습니다.
+
+<p align="center">
+  <img src="docs/images/main-screen.png" alt="Data Match Studio 메인 화면과 브라우저 내부 파일 처리 안내" width="1100" />
+</p>
+
 ## 주요 기능
 
 - XLSX, CSV, TSV 파일 비교
