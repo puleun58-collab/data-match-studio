@@ -124,9 +124,10 @@ export default function KeyMappingPanel({ keysA, keysB, caseSensitive, value, on
       <label className="checkbox-label"><input type="checkbox" checked={enabled} onChange={event => setEnabled(event.target.checked)} /> 키 이름 통합 사용</label>
       {enabled ? (
         <div className="key-mapping-panel__body">
+          <p className="key-mapping-panel__note">하나의 사전을 양쪽 파일에서 선택한 키 컬럼에 공통으로 적용합니다.</p>
           <div className="column-pair-grid">
             <Field label="매핑 이름" htmlFor="mapping-name"><input id="mapping-name" type="text" value={name} onChange={event => setName(event.target.value)} /></Field>
-            <Field label="Wide 매핑 파일" htmlFor="mapping-file" hint="XLSX 또는 UTF-8 CSV"><input id="mapping-file" type="file" accept=".xlsx,.csv" onChange={event => chooseFile(event.target.files?.[0])} /></Field>
+            <Field label="매핑 파일" htmlFor="mapping-file" hint="XLSX 또는 UTF-8 CSV"><input id="mapping-file" type="file" accept=".xlsx,.csv" onChange={event => chooseFile(event.target.files?.[0])} /></Field>
           </div>
           {sheets.length ? <Field label="매핑 시트" htmlFor="mapping-sheet"><select id="mapping-sheet" value={sheet} onChange={event => { setSheet(event.target.value); if (file) void parseFile(file, event.target.value, headerRow); }}>{sheets.map(item => <option key={item}>{item}</option>)}</select></Field> : null}
           {file ? <Field label="헤더 행" htmlFor="mapping-header-row" hint="1부터 시작"><input id="mapping-header-row" type="number" min="1" value={headerRow} onChange={event => { const next = Math.max(1, Number(event.target.value) || 1); setHeaderRow(next); void parseFile(file, sheet, next); }} /></Field> : null}

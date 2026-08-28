@@ -1006,6 +1006,17 @@ select[multiple] option {
   gap: var(--space-5);
 }
 
+.key-mapping-panel__note {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-subtle);
+  box-shadow: inset 0 0 0 1px var(--color-border);
+  color: var(--color-ink-muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
 .key-mapping-panel fieldset {
   display: grid;
   gap: var(--space-3);

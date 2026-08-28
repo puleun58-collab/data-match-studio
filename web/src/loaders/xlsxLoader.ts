@@ -1,4 +1,4 @@
-import type { LoaderResult, ScalarV1, Table } from '../engine/contracts';
+import type { DiagnosticCode, LoaderResult, ScalarV1, Table } from '../engine/contracts';
 import { encodeScalar } from '../engine/serialization';
 import { DEFAULT_XLSX_LIMITS, inspectXlsxZip, zipEntryBytes, type XlsxLimits } from './xlsxPreflight';
 
@@ -13,12 +13,13 @@ export type XlsxLoaderOptions = {
 
 export type XlsxSheetResult = { ok: true; sheets: string[] } | { ok: false; diagnostics: { code: string; message: string }[] };
 
-const fail = (code: string, message: string): LoaderResult => ({
+export type WorkbookSheet = { name: string; relationshipId: string };
+
+const fail = (code: DiagnosticCode, message: string): LoaderResult => ({
   ok: false,
-  diagnostics: [{ code: code as any, message }],
+  diagnostics: [{ code, message }],
   trace: [],
 });
-
 async function inflate(data: Uint8Array, method: number, expectedSize: number, maxOutput: number): Promise<Uint8Array> {
   if (method === 0) { if (data.byteLength > maxOutput || (expectedSize > 0 && data.byteLength !== expectedSize)) throw new Error('ZIP_LIMIT'); return data; }
   if (method !== 8 || typeof DecompressionStream === 'undefined') {
@@ -31,6 +32,78 @@ async function inflate(data: Uint8Array, method: number, expectedSize: number, m
   const output = new Uint8Array(total); let offset = 0; for (const chunk of chunks) { output.set(chunk, offset); offset += chunk.byteLength; } return output;
 }
 
+function xmlText(bytes: Uint8Array): string {
+  return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+}
+
+// Local-name lookups ignore namespace prefixes entirely (e.g. `<sheet>`, `<x:sheet>`,
+// `r:id`, `rel:id` all resolve the same way) instead of hardcoding a prefix string.
+function localName(element: Element): string {
+  return element.localName || element.tagName.split(':').pop() || element.tagName;
+}
+
+function attributeLocalName(attribute: Attr): string {
+  return attribute.localName || attribute.name.split(':').pop() || attribute.name;
+}
+
+function attributeByLocalName(element: Element, name: string): string | null {
+  const attributes = element.attributes;
+  for (let index = 0; index < attributes.length; index += 1) {
+    const attribute = attributes[index];
+    if (attributeLocalName(attribute) === name) return attribute.value;
+  }
+  return null;
+}
+
+// Manual tree walk instead of `querySelectorAll` — CSS selector support is not
+// guaranteed across every `DOMParser` implementation (including some XML-mode
+// parsers used in non-browser test environments), while `childNodes` traversal
+// by local name works everywhere.
+function collectByLocalName(node: Node, name: string, results: Element[]): void {
+  const children = node.childNodes;
+  for (let index = 0; index < children.length; index += 1) {
+    const child = children[index];
+    if (child.nodeType === 1) {
+      const element = child as Element;
+      if (localName(element) === name) results.push(element);
+      collectByLocalName(element, name, results);
+    }
+  }
+}
+
+function childrenByName(parent: Node, name: string): Element[] {
+  const results: Element[] = [];
+  collectByLocalName(parent, name, results);
+  return results;
+}
+
+function firstChildByName(parent: Node, name: string): Element | undefined {
+  return childrenByName(parent, name)[0];
+}
+
+function hasParserError(document: Node): boolean {
+  return childrenByName(document, 'parsererror').length > 0;
+}
+
+/**
+ * Parses `xl/workbook.xml` and returns every declared worksheet with its
+ * relationship id, regardless of the namespace prefix the producer used
+ * (`<sheet>`, `<x:sheet>`, `r:id`, `rel:id`, ...). Throws on malformed XML;
+ * returns an empty array when the workbook genuinely has no worksheets.
+ */
+export function parseWorkbookSheets(workbookXml: string): WorkbookSheet[] {
+  const document = new DOMParser().parseFromString(workbookXml, 'application/xml');
+  if (hasParserError(document)) throw new Error('Malformed workbook XML.');
+  const sheetsContainer = childrenByName(document, 'sheets')[0];
+  if (!sheetsContainer) return [];
+  return childrenByName(sheetsContainer, 'sheet')
+    .map((element) => ({
+      name: attributeByLocalName(element, 'name') ?? '',
+      relationshipId: attributeByLocalName(element, 'id') ?? '',
+    }))
+    .filter((sheet) => sheet.name.length > 0);
+}
+
 export async function listXlsxSheets(input: Blob | ArrayBuffer | Uint8Array, limits?: Partial<XlsxLimits>): Promise<XlsxSheetResult> {
   try {
     const bytes = input instanceof Blob ? new Uint8Array(await input.arrayBuffer()) : input instanceof Uint8Array ? input : new Uint8Array(input);
@@ -38,26 +111,10 @@ export async function listXlsxSheets(input: Blob | ArrayBuffer | Uint8Array, lim
     if (preflight.diagnostics.length) return { ok: false, diagnostics: preflight.diagnostics.map((item) => ({ code: item.code, message: item.message })) };
     const entry = preflight.entries.find((item) => item.name === 'xl/workbook.xml');
     if (!entry) return { ok: false, diagnostics: [{ code: 'UNSUPPORTED_FORMAT', message: 'Workbook metadata is missing.' }] };
-    const xml = new TextDecoder('utf-8', { fatal: true }).decode(await inflate(zipEntryBytes(bytes, entry), entry.method, entry.uncompressedSize, limits?.maxUncompressedBytes ?? DEFAULT_XLSX_LIMITS.maxUncompressedBytes));
-    const sheets = [...xml.matchAll(/<sheet\b[^>]*\bname="([^"]+)"/g)].map((match) => match[1]).filter(Boolean);
+    const xml = xmlText(await inflate(zipEntryBytes(bytes, entry), entry.method, entry.uncompressedSize, limits?.maxUncompressedBytes ?? DEFAULT_XLSX_LIMITS.maxUncompressedBytes));
+    const sheets = parseWorkbookSheets(xml).map((sheet) => sheet.name);
     return sheets.length ? { ok: true, sheets } : { ok: false, diagnostics: [{ code: 'UNSUPPORTED_FORMAT', message: 'Workbook contains no worksheets.' }] };
   } catch (error) { return { ok: false, diagnostics: [{ code: 'UNSUPPORTED_FORMAT', message: `Unable to inspect XLSX sheets: ${error instanceof Error ? error.message : String(error)}` }] }; }
-}
-
-function xmlText(bytes: Uint8Array): string {
-  return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-}
-
-function localName(element: Element): string {
-  return element.localName || element.tagName.split(':').pop() || element.tagName;
-}
-
-function childrenByName(parent: ParentNode, name: string): Element[] {
-  return Array.from(parent.querySelectorAll('*')).filter((node) => localName(node) === name) as Element[];
-}
-
-function firstChildByName(parent: ParentNode, name: string): Element | undefined {
-  return childrenByName(parent, name)[0];
 }
 
 function columnIndex(ref: string): number {
@@ -102,7 +159,7 @@ function cellValue(cell: Element, shared: string[]): ScalarV1 {
 
 function parseWorksheet(xml: string, shared: string[], rejectFormulas: boolean, signal?: AbortSignal): ScalarV1[][] {
   const document = new DOMParser().parseFromString(xml, 'application/xml');
-  if (document.querySelector('parsererror')) throw new Error('Malformed worksheet XML.');
+  if (hasParserError(document)) throw new Error('Malformed worksheet XML.');
   const result: ScalarV1[][] = [];
   for (const row of childrenByName(document, 'row')) {
     if (signal?.aborted) throw new Error('CANCELLED');
@@ -125,7 +182,10 @@ export async function loadXlsx(input: Blob | ArrayBuffer | Uint8Array, options: 
       : input instanceof Uint8Array ? input : new Uint8Array(input);
     const preflight = inspectXlsxZip(bytes, options.limits);
     if (preflight.diagnostics.length) {
-      return { ok: false, diagnostics: preflight.diagnostics.map((item) => ({ code: item.code as any, message: item.message })), trace: [] };
+      // Preflight uses its own XlsxDiagnosticCode namespace (ZIP-level codes like
+      // UNSUPPORTED_XLSX/MACRO_REJECTED) that is disjoint from the loader-facing
+      // DiagnosticCode union; both are stable string enums surfaced as diagnostics.
+      return { ok: false, diagnostics: preflight.diagnostics.map((item) => ({ code: item.code as unknown as DiagnosticCode, message: item.message })), trace: [] };
     }
     const entries = new Map(preflight.entries.map((entry) => [entry.name, entry]));
     const get = async (name: string): Promise<string> => {
@@ -136,18 +196,18 @@ export async function loadXlsx(input: Blob | ArrayBuffer | Uint8Array, options: 
     const workbookXml = await get('xl/workbook.xml');
     const relsXml = await get('xl/_rels/workbook.xml.rels');
     if (!workbookXml || !relsXml) return fail('UNSUPPORTED_FORMAT', 'Workbook metadata is missing.');
+    const sheets = parseWorkbookSheets(workbookXml);
+    if (!sheets.length) return fail('UNSUPPORTED_FORMAT', 'Workbook contains no worksheets.');
     const relationshipMap = new Map<string, string>();
     for (const match of relsXml.matchAll(/Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"/g)) {
       const target = match[2].replace(/^\//, '');
       relationshipMap.set(match[1], target.startsWith('xl/') ? target : `xl/${target}`);
     }
-    const sheetMatches = [...workbookXml.matchAll(/<sheet\b[^>]*name="([^"]+)"[^>]*r:id="([^"]+)"[^>]*>/g)];
-    if (!sheetMatches.length) return fail('UNSUPPORTED_FORMAT', 'Workbook contains no worksheets.');
-    const selected = sheetMatches.find((match) => match[1] === options.sheetName) ?? sheetMatches[0];
-    if (options.sheetName && selected[1] !== options.sheetName && !sheetMatches.some((match) => match[1] === options.sheetName)) {
+    if (options.sheetName && !sheets.some((sheet) => sheet.name === options.sheetName)) {
       return fail('UNSUPPORTED_FORMAT', `Worksheet not found: ${options.sheetName}`);
     }
-    const sheetPath = relationshipMap.get(selected[2]);
+    const selected = sheets.find((sheet) => sheet.name === options.sheetName) ?? sheets[0];
+    const sheetPath = relationshipMap.get(selected.relationshipId);
     if (!sheetPath) return fail('UNSUPPORTED_FORMAT', 'Worksheet relationship is missing.');
     const shared = sharedStrings(await get('xl/sharedStrings.xml'));
     const worksheetXml = await get(sheetPath);
