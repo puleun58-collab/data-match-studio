@@ -25,7 +25,7 @@ type Props = {
 
 export default function KeyMappingPanel({ keysA, keysB, caseSensitive, value, onChange }: Props) {
   const [enabled, setEnabled] = useState(value?.enabled ?? false);
-  const [name, setName] = useState(value?.dictionary?.name ?? '기본 키 매핑');
+  const [name, setName] = useState(value?.dictionary?.name ?? '기본 매핑');
   const [file, setFile] = useState<File>();
   const [table, setTable] = useState<Table>();
   const [sheets, setSheets] = useState<string[]>([]);
@@ -118,14 +118,14 @@ export default function KeyMappingPanel({ keysA, keysB, caseSensitive, value, on
   return (
     <div className="setup-group key-mapping-panel">
       <div className="setup-group__title">
-        <h3>키 매핑 사전</h3>
-        <p>정규화된 별칭을 표준 키로 바꾼 뒤 복합 키와 중복 상태를 계산합니다.</p>
+        <h3>키 이름 통합</h3>
+        <p>서로 다른 이름을 하나의 표준 키로 통합한 뒤 비교합니다.</p>
       </div>
-      <label className="checkbox-label"><input type="checkbox" checked={enabled} onChange={event => setEnabled(event.target.checked)} /> 키 매핑 사전 사용</label>
+      <label className="checkbox-label"><input type="checkbox" checked={enabled} onChange={event => setEnabled(event.target.checked)} /> 키 이름 통합 사용</label>
       {enabled ? (
         <div className="key-mapping-panel__body">
           <div className="column-pair-grid">
-            <Field label="사전 이름" htmlFor="mapping-name"><input id="mapping-name" value={name} onChange={event => setName(event.target.value)} /></Field>
+            <Field label="매핑 이름" htmlFor="mapping-name"><input id="mapping-name" type="text" value={name} onChange={event => setName(event.target.value)} /></Field>
             <Field label="Wide 매핑 파일" htmlFor="mapping-file" hint="XLSX 또는 UTF-8 CSV"><input id="mapping-file" type="file" accept=".xlsx,.csv" onChange={event => chooseFile(event.target.files?.[0])} /></Field>
           </div>
           {sheets.length ? <Field label="매핑 시트" htmlFor="mapping-sheet"><select id="mapping-sheet" value={sheet} onChange={event => { setSheet(event.target.value); if (file) void parseFile(file, event.target.value, headerRow); }}>{sheets.map(item => <option key={item}>{item}</option>)}</select></Field> : null}
@@ -144,18 +144,18 @@ export default function KeyMappingPanel({ keysA, keysB, caseSensitive, value, on
           ) : null}
 
           <div className="manual-mapping">
-            <div className="manual-mapping__heading"><strong>화면에서 직접 등록</strong><Button onClick={() => setManualGroups(previous => [...previous, { canonical: '', aliases: [] }])}>그룹 추가</Button></div>
-            {manualGroups.map((group, index) => <div className="manual-mapping__row" key={index}><input aria-label={`대표값 ${index + 1}`} placeholder="대표값" value={group.canonical} onChange={event => updateManualGroup(index, { canonical: event.target.value })} /><input aria-label={`별칭 ${index + 1}`} placeholder="별칭을 쉼표로 구분" value={group.aliases.join(', ')} onChange={event => updateManualGroup(index, { aliases: event.target.value.split(',').map(value => value.trim()).filter(Boolean) })} /><Button variant="danger" onClick={() => setManualGroups(previous => previous.filter((_, groupIndex) => groupIndex !== index))}>삭제</Button></div>)}
+            <div className="manual-mapping__heading"><strong>직접 등록</strong><Button onClick={() => setManualGroups(previous => [...previous, { canonical: '', aliases: [] }])}>그룹 추가</Button></div>
+            {manualGroups.map((group, index) => <div className="manual-mapping__row" key={index}><input type="text" aria-label={`대표값 ${index + 1}`} placeholder="대표값" value={group.canonical} onChange={event => updateManualGroup(index, { canonical: event.target.value })} /><input type="text" aria-label={`별칭 ${index + 1}`} placeholder="별칭을 쉼표로 구분" value={group.aliases.join(', ')} onChange={event => updateManualGroup(index, { aliases: event.target.value.split(',').map(value => value.trim()).filter(Boolean) })} /><Button variant="danger" onClick={() => setManualGroups(previous => previous.filter((_, groupIndex) => groupIndex !== index))}>삭제</Button></div>)}
           </div>
 
-          <div className="mapping-json-actions"><Button onClick={downloadDictionary} disabled={!groups.length}>사전 JSON 저장</Button><label className="button button--secondary" htmlFor="mapping-json-import">사전 JSON 불러오기</label><input className="visually-hidden" id="mapping-json-import" type="file" accept="application/json" onChange={event => importJson(event.target.files?.[0])} /></div>
+          <div className="mapping-json-actions"><Button onClick={downloadDictionary} disabled={!groups.length}>JSON 저장</Button><label className="button button--secondary" htmlFor="mapping-json-import">JSON 불러오기</label><input className="visually-hidden" id="mapping-json-import" type="file" accept="application/json" onChange={event => importJson(event.target.files?.[0])} /></div>
           <div className="column-pair-grid">
             <fieldset><legend>첫 번째 시트 적용 키</legend>{keysA.map(key => <label className="checkbox-label" key={key}><input type="checkbox" checked={applyA.includes(key)} onChange={event => setApplyA(previous => event.target.checked ? [...previous, key] : previous.filter(item => item !== key))} /> {key}</label>)}</fieldset>
             <fieldset><legend>두 번째 시트 적용 키</legend>{keysB.map(key => <label className="checkbox-label" key={key}><input type="checkbox" checked={applyB.includes(key)} onChange={event => setApplyB(previous => event.target.checked ? [...previous, key] : previous.filter(item => item !== key))} /> {key}</label>)}</fieldset>
           </div>
 
           {loadError ? <StateMessage title="매핑 파일을 읽지 못했습니다" tone="error" role="alert">{loadError}</StateMessage> : null}
-          {dictionary.issues.filter(issue => issue.severity === 'error').map((issue, index) => <StateMessage key={`${issue.code}-${index}`} title="키 매핑 충돌" tone="error" role="alert">{issue.message}{issue.canonicals?.length ? ` 연결된 대표값: ${issue.canonicals.join(', ')}` : ''} 매핑 파일을 수정하거나 충돌을 해결한 뒤 비교를 다시 실행하세요.</StateMessage>)}
+          {dictionary.issues.filter(issue => issue.severity === 'error').map((issue, index) => <StateMessage key={`${issue.code}-${index}`} title="키 이름 통합 충돌" tone="error" role="alert">{issue.message}{issue.canonicals?.length ? ` 연결된 대표값: ${issue.canonicals.join(', ')}` : ''} 매핑 파일을 수정하거나 충돌을 해결한 뒤 비교를 다시 실행하세요.</StateMessage>)}
           {dictionary.issues.filter(issue => issue.severity === 'warning').length ? <details className="diagnostics"><summary>매핑 경고 {dictionary.issues.filter(issue => issue.severity === 'warning').length}건</summary><ul>{dictionary.issues.filter(issue => issue.severity === 'warning').map((issue, index) => <li key={`${issue.code}-${index}`}>{issue.message}</li>)}</ul></details> : null}
           <div className="mapping-metrics"><span>대표값 <strong>{dictionary.stats.canonicalCount}</strong></span><span>별칭 <strong>{dictionary.stats.aliasCount}</strong></span><span>전체 항목 <strong>{dictionary.stats.mappingItemCount}</strong></span><span>중복 별칭 <strong>{dictionary.stats.duplicateAliasCount}</strong></span><span>빈 셀 <strong>{dictionary.stats.emptyAliasCellCount}</strong></span><span>충돌 <strong>{dictionary.stats.collisionAliasCount}</strong></span><span>상태 <strong>{ready ? '적용 가능' : '설정 필요'}</strong></span></div>
           {dictionary.preview.length ? <details className="diagnostics"><summary>내부 alias → canonical 미리보기</summary><div className="result-table-wrap"><table><thead><tr><th>원본 별칭</th><th>정규화 별칭</th><th>표준 키</th></tr></thead><tbody>{dictionary.preview.slice(0, 200).map((item, index) => <tr key={`${item.normalizedAlias}-${index}`}><td>{item.originalAlias}</td><td>{item.normalizedAlias}</td><td>{item.canonical}</td></tr>)}</tbody></table></div></details> : null}

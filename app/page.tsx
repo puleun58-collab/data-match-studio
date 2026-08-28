@@ -293,7 +293,7 @@ export default function HomePage() {
       : !selectionsMatch
         ? `양쪽 선택 개수를 맞추세요. 키 ${keys.length}:${keysB.length}, 비교 ${compare.length}:${compareB.length}`
         : !mappingReady
-          ? '키 매핑 충돌을 해결하고 적용할 키 컬럼을 선택하세요.'
+          ? '키 이름 통합 충돌을 해결하고 적용할 키 컬럼을 선택하세요.'
           : progress
             ? '현재 비교가 진행 중입니다.'
             : '';

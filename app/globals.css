@@ -710,6 +710,7 @@ h3 {
 
 input[type="text"],
 input[type="search"],
+input[type="number"],
 select {
   width: 100%;
   min-height: 2.9rem;

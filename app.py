@@ -223,7 +223,7 @@ def main() -> None:
             keyed_b = add_key_columns(frame_b, config_b.key_columns, key_options, config_b.key_mappings)
             cardinalities = analyze_cardinality(keyed_a, keyed_b)
             if mapping_result is not None:
-                st.markdown("#### 키 매핑 진단")
+                st.markdown("#### 키 이름 통합 진단")
                 mapping_labels = {
                     "canonical_count": "대표값 개수",
                     "alias_count": "전체 별칭 개수",
@@ -411,15 +411,15 @@ def render_key_mapping_options(
     refs_a: list[ColumnRef],
     refs_b: list[ColumnRef],
 ) -> tuple[Any | None, bool]:
-    enabled = st.checkbox("키 매핑 사전 사용", value=False, key="use_key_mapping")
+    enabled = st.checkbox("키 이름 통합 사용", value=False, key="use_key_mapping")
     config_a.key_mappings = {}
     config_b.key_mappings = {}
     if not enabled:
         return None, True
 
     groups: list[MappingGroup] = []
-    with st.expander("키 매핑 사전", expanded=True):
-        st.caption("Wide 형식의 XLSX·CSV를 브라우저 세션에서만 읽습니다. 대표값 열은 직접 선택하세요.")
+    with st.expander("키 이름 통합", expanded=True):
+        st.caption("서로 다른 이름을 하나의 표준 키로 통합한 뒤 비교합니다. Wide 형식 XLSX·CSV의 대표값 열은 직접 선택하세요.")
         mapping_file = st.file_uploader("매핑 파일", type=["xlsx", "csv"], key="mapping_file")
         if mapping_file is not None:
             try:
@@ -462,7 +462,7 @@ def render_key_mapping_options(
             except Exception:
                 st.error("매핑 파일을 읽지 못했습니다. 시트, 헤더 행, 파일 형식을 확인하세요.")
 
-        json_file = st.file_uploader("키 매핑 JSON 불러오기", type=["json"], key="mapping_json_file")
+        json_file = st.file_uploader("JSON 불러오기", type=["json"], key="mapping_json_file")
         if json_file is not None:
             try:
                 groups.extend(load_mapping_json(json_file.getvalue()))
@@ -516,7 +516,7 @@ def render_key_mapping_options(
             groups_payload[canonical].extend(alias for alias in group.aliases if alias is not None and str(alias).strip())
 
         st.download_button(
-            "현재 키 매핑 JSON 저장",
+            "JSON 저장",
             dump_mapping_json(groups),
             file_name="key-mapping.json",
             mime="application/json",
@@ -533,7 +533,7 @@ def render_key_mapping_options(
             key="mapping_apply_b",
             format_func=lambda value: ref_label(refs_b, value),
         )
-        mapping_config = KeyMappingConfig("기본 키 매핑", True, groups_payload)
+        mapping_config = KeyMappingConfig("기본 매핑", True, groups_payload)
         config_a.key_mappings = {column: mapping_config for column in selected_a}
         config_b.key_mappings = {column: mapping_config for column in selected_b}
         if not selected_a and not selected_b:

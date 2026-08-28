@@ -226,7 +226,7 @@ export default function ResultsPanel({ result, rules = [], onRetry, isReady, dup
                         <th scope="col">Lane 키</th>
                         <th scope="col">일치 여부</th>
                         <th scope="col">Lane별 데이터 건수</th>
-                        {mappingUsed ? <><th scope="col">A 원본 / 정규화 / 표준 키</th><th scope="col">B 원본 / 정규화 / 표준 키</th><th scope="col">키 매핑 결과</th></> : null}
+                        {mappingUsed ? <><th scope="col">A 원본 / 정규화 / 표준 키</th><th scope="col">B 원본 / 정규화 / 표준 키</th><th scope="col">키 이름 통합 결과</th></> : null}
                         <th scope="col">규칙별 시트 비교값</th>
                       </tr>
                     </thead>
