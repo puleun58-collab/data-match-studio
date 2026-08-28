@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadCsv } from '../../web/src/loaders/csvLoader';
+import DropdownMultiSelect from './DropdownMultiSelect';
 import { listXlsxSheets, loadXlsx } from '../../web/src/loaders/xlsxLoader';
 import { buildMapping, groupsFromWideTable, mappingFromJson, mappingToJson, type MappingDictionary, type MappingGroup } from '../../web/src/mapping/keyMapping';
 import type { Table } from '../../web/src/engine/contracts';
@@ -153,8 +154,8 @@ export default function KeyMappingPanel({ keysA, keysB, caseSensitive, value, on
             <>
               <div className="column-pair-grid">
                 <Field label="대표값 컬럼" htmlFor="mapping-canonical"><select id="mapping-canonical" value={canonicalColumn} onChange={event => { setCanonicalColumn(event.target.value); setAliasColumns([]); }}><option value="">선택하세요</option>{table.headers.map(header => <option key={header}>{header}</option>)}</select></Field>
-                <Field label="별칭 컬럼" htmlFor="mapping-aliases" hint="Ctrl/Cmd로 여러 개 선택">
-                  <select id="mapping-aliases" multiple disabled={allOtherColumns || !canonicalColumn} value={aliasColumns} onChange={event => setAliasColumns(Array.from(event.target.selectedOptions, option => option.value))}>{table.headers.filter(header => header !== canonicalColumn).map(header => <option key={header}>{header}</option>)}</select>
+                <Field label="별칭 컬럼" htmlFor="mapping-aliases">
+                  <DropdownMultiSelect id="mapping-aliases" options={table.headers.filter(header => header !== canonicalColumn)} value={aliasColumns} onChange={setAliasColumns} disabled={allOtherColumns || !canonicalColumn} placeholder={allOtherColumns ? '전체 자동 선택됨' : '선택 안 함'} />
                 </Field>
               </div>
               <label className="checkbox-label"><input type="checkbox" checked={allOtherColumns} onChange={event => setAllOtherColumns(event.target.checked)} /> 대표값 컬럼을 제외한 나머지 컬럼을 모두 별칭으로 사용</label>
