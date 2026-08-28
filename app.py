@@ -420,7 +420,7 @@ def render_key_mapping_options(
     groups: list[MappingGroup] = []
     with st.expander("키 이름 통합", expanded=True):
         st.caption("서로 다른 이름을 하나의 표준 키로 통합한 뒤 비교합니다. XLSX·CSV의 대표값 열은 직접 선택하세요.")
-        st.info("하나의 사전을 양쪽 파일에서 선택한 키 컬럼에 공통으로 적용합니다.")
+        st.info("양쪽 파일에서 선택한 키 컬럼에 같은 사전을 적용합니다.")
         mapping_file = st.file_uploader("매핑 파일", type=["xlsx", "csv"], key="mapping_file")
         if mapping_file is not None:
             try:
@@ -450,7 +450,7 @@ def render_key_mapping_options(
                     all_other = st.checkbox("대표값 컬럼을 제외한 나머지 컬럼을 모두 별칭으로 사용", value=True, key="mapping_all_aliases")
                     alias_options = [column for column in mapping_columns if column != canonical_column]
                     alias_columns = alias_options if all_other else st.multiselect("별칭 컬럼", alias_options, key="mapping_alias_columns")
-                    with st.expander("원본 매핑 표 미리보기", expanded=False):
+                    with st.expander("매핑 표 미리보기", expanded=False):
                         st.dataframe(mapping_frame.head(50), use_container_width=True)
                     if alias_columns:
                         groups.extend(groups_from_wide_frame(mapping_frame, canonical_column, alias_columns))

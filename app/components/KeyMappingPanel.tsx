@@ -136,17 +136,17 @@ export default function KeyMappingPanel({ keysA, keysB, caseSensitive, value, on
       </div>
       <div className="key-mapping-panel__toggle">
         <label className="checkbox-label"><input type="checkbox" checked={enabled} onChange={event => setEnabled(event.target.checked)} /> 키 이름 통합 사용</label>
-        {enabled ? <span className="key-mapping-panel__note">하나의 사전을 양쪽 파일에서 선택한 키 컬럼에 공통으로 적용합니다.</span> : null}
+        {enabled ? <span className="key-mapping-panel__note">양쪽 파일에서 선택한 키 컬럼에 같은 사전을 적용합니다.</span> : null}
       </div>
       {enabled ? (
         <div className="key-mapping-panel__body">
           <div className="column-pair-grid">
-            <Field label="매핑 이름" htmlFor="mapping-name"><input id="mapping-name" type="text" value={name} onChange={event => setName(event.target.value)} /></Field>
+            <Field label="매핑 이름" htmlFor="mapping-name" hint="사전을 구분할 이름"><input id="mapping-name" type="text" value={name} onChange={event => setName(event.target.value)} /></Field>
             <Field label="매핑 파일" htmlFor="mapping-file" hint="XLSX 또는 UTF-8 CSV"><input id="mapping-file" type="file" accept=".xlsx,.csv" onChange={event => chooseFile(event.target.files?.[0])} /></Field>
           </div>
           {sheets.length || file ? (
             <div className="column-pair-grid">
-              {sheets.length ? <Field label="매핑 시트" htmlFor="mapping-sheet"><select id="mapping-sheet" value={sheet} onChange={event => { setSheet(event.target.value); if (file) void parseFile(file, event.target.value, headerRow); }}>{sheets.map(item => <option key={item}>{item}</option>)}</select></Field> : <div />}
+              {sheets.length ? <Field label="매핑 시트" htmlFor="mapping-sheet" hint="업로드한 파일의 워크시트"><select id="mapping-sheet" value={sheet} onChange={event => { setSheet(event.target.value); if (file) void parseFile(file, event.target.value, headerRow); }}>{sheets.map(item => <option key={item}>{item}</option>)}</select></Field> : <div />}
               {file ? <Field label="헤더 행" htmlFor="mapping-header-row" hint="1부터 시작"><input id="mapping-header-row" type="number" min="1" value={headerRow} onChange={event => { const next = Math.max(1, Number(event.target.value) || 1); setHeaderRow(next); void parseFile(file, sheet, next); }} /></Field> : null}
             </div>
           ) : null}
@@ -159,7 +159,7 @@ export default function KeyMappingPanel({ keysA, keysB, caseSensitive, value, on
                 </Field>
               </div>
               <label className="checkbox-label"><input type="checkbox" checked={allOtherColumns} onChange={event => setAllOtherColumns(event.target.checked)} /> 대표값 컬럼을 제외한 나머지 컬럼을 모두 별칭으로 사용</label>
-              <details className="diagnostics"><summary>원본 매핑 표 미리보기 · {table.rows.length.toLocaleString('ko-KR')}행</summary><div className="result-table-wrap"><table><thead><tr>{table.headers.map(header => <th key={header}>{header}</th>)}</tr></thead><tbody>{table.rows.slice(0, 20).map((row, rowIndex) => <tr key={rowIndex}>{table.headers.map((header, columnIndex) => <td key={header}>{String(decodeScalar(row[columnIndex]))}</td>)}</tr>)}</tbody></table></div></details>
+              <details className="diagnostics"><summary>매핑 표 미리보기 · {table.rows.length.toLocaleString('ko-KR')}행</summary><div className="result-table-wrap result-table-wrap--compact"><table><thead><tr>{table.headers.map(header => <th key={header}>{header}</th>)}</tr></thead><tbody>{table.rows.slice(0, 20).map((row, rowIndex) => <tr key={rowIndex}>{table.headers.map((header, columnIndex) => <td key={header}>{String(decodeScalar(row[columnIndex]))}</td>)}</tr>)}</tbody></table></div></details>
             </>
           ) : null}
 
@@ -178,7 +178,7 @@ export default function KeyMappingPanel({ keysA, keysB, caseSensitive, value, on
           {dictionary.issues.filter(issue => issue.severity === 'error').map((issue, index) => <StateMessage key={`${issue.code}-${index}`} title="키 이름 통합 충돌" tone="error" role="alert">{issue.message}{issue.canonicals?.length ? ` 연결된 대표값: ${issue.canonicals.join(', ')}` : ''} 매핑 파일을 수정하거나 충돌을 해결한 뒤 비교를 다시 실행하세요.</StateMessage>)}
           {dictionary.issues.filter(issue => issue.severity === 'warning').length ? <details className="diagnostics"><summary>매핑 경고 {dictionary.issues.filter(issue => issue.severity === 'warning').length}건</summary><ul>{dictionary.issues.filter(issue => issue.severity === 'warning').map((issue, index) => <li key={`${issue.code}-${index}`}>{issue.message}</li>)}</ul></details> : null}
           <div className="mapping-metrics"><span>대표값 <strong>{dictionary.stats.canonicalCount}</strong></span><span>별칭 <strong>{dictionary.stats.aliasCount}</strong></span><span>전체 항목 <strong>{dictionary.stats.mappingItemCount}</strong></span><span>중복 별칭 <strong>{dictionary.stats.duplicateAliasCount}</strong></span><span>빈 셀 <strong>{dictionary.stats.emptyAliasCellCount}</strong></span><span>충돌 <strong>{dictionary.stats.collisionAliasCount}</strong></span><span>상태 <strong>{ready ? '적용 가능' : '설정 필요'}</strong></span></div>
-          {groupedPreview.length ? <details className="diagnostics"><summary>별칭 → 표준 키 매핑 결과</summary><div className="result-table-wrap"><table><thead><tr><th>표준 키</th><th>별칭 개수</th><th>별칭 목록</th></tr></thead><tbody>{groupedPreview.map(group => <tr key={group.canonical}><td>{group.canonical}</td><td>{group.aliases.length}</td><td>{group.aliases.join(', ')}</td></tr>)}</tbody></table></div></details> : null}
+          {groupedPreview.length ? <details className="diagnostics"><summary>별칭 → 표준 키 매핑 결과</summary><div className="result-table-wrap result-table-wrap--compact"><table><thead><tr><th>표준 키</th><th>별칭 개수</th><th>별칭 목록</th></tr></thead><tbody>{groupedPreview.map(group => <tr key={group.canonical}><td>{group.canonical}</td><td>{group.aliases.length}</td><td>{group.aliases.join(', ')}</td></tr>)}</tbody></table></div></details> : null}
         </div>
       ) : null}
     </div>

@@ -1098,6 +1098,7 @@ select[multiple] option {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-4);
+  margin-block-end: var(--space-6);
 }
 
 .key-mapping-panel__note {
@@ -1431,6 +1432,11 @@ summary {
   background: var(--color-surface-raised);
   box-shadow: var(--shadow-control), inset 0 0 0 1px var(--color-border);
   -webkit-overflow-scrolling: touch;
+}
+
+.result-table-wrap--compact {
+  display: inline-block;
+  width: fit-content;
 }
 
 .results-panel table {
