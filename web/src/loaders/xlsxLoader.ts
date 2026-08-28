@@ -15,6 +15,8 @@ export type XlsxSheetResult = { ok: true; sheets: string[] } | { ok: false; diag
 
 export type WorkbookSheet = { name: string; relationshipId: string };
 
+export type WorkbookRelationship = { id: string; target: string; type: string };
+
 const fail = (code: DiagnosticCode, message: string): LoaderResult => ({
   ok: false,
   diagnostics: [{ code, message }],
@@ -102,6 +104,40 @@ export function parseWorkbookSheets(workbookXml: string): WorkbookSheet[] {
       relationshipId: attributeByLocalName(element, 'id') ?? '',
     }))
     .filter((sheet) => sheet.name.length > 0);
+}
+
+/**
+ * Parses `xl/_rels/workbook.xml.rels` and returns every `Relationship` with
+ * its `Id`/`Target`/`Type`, independent of attribute order and of the
+ * `Relationship` element's namespace prefix (`<Relationship>`, `<r:Relationship>`, ...).
+ * Throws on malformed XML.
+ */
+export function parseWorkbookRelationships(relsXml: string): WorkbookRelationship[] {
+  const document = new DOMParser().parseFromString(relsXml, 'application/xml');
+  if (hasParserError(document)) throw new Error('Malformed workbook relationships XML.');
+  return childrenByName(document, 'Relationship')
+    .map((element) => ({
+      id: attributeByLocalName(element, 'Id') ?? '',
+      target: attributeByLocalName(element, 'Target') ?? '',
+      type: attributeByLocalName(element, 'Type') ?? '',
+    }))
+    .filter((relationship) => relationship.id.length > 0 && relationship.target.length > 0);
+}
+
+/**
+ * Resolves a relationship `Target` to its ZIP-internal path. Targets are
+ * relative to `xl/` (the directory that owns `_rels/workbook.xml.rels`)
+ * unless they already carry an `xl/` segment, so a leading `xl/` is added
+ * exactly once regardless of an optional leading slash.
+ */
+function normalizeRelationshipTarget(target: string): string {
+  const withoutLeadingSlashes = target.replace(/^\/+/, '');
+  return withoutLeadingSlashes.startsWith('xl/') ? withoutLeadingSlashes : `xl/${withoutLeadingSlashes}`;
+}
+
+export function resolveWorksheetPath(relationshipId: string, relationships: WorkbookRelationship[]): string | undefined {
+  const relationship = relationships.find((item) => item.id === relationshipId);
+  return relationship ? normalizeRelationshipTarget(relationship.target) : undefined;
 }
 
 export async function listXlsxSheets(input: Blob | ArrayBuffer | Uint8Array, limits?: Partial<XlsxLimits>): Promise<XlsxSheetResult> {
@@ -198,16 +234,12 @@ export async function loadXlsx(input: Blob | ArrayBuffer | Uint8Array, options: 
     if (!workbookXml || !relsXml) return fail('UNSUPPORTED_FORMAT', 'Workbook metadata is missing.');
     const sheets = parseWorkbookSheets(workbookXml);
     if (!sheets.length) return fail('UNSUPPORTED_FORMAT', 'Workbook contains no worksheets.');
-    const relationshipMap = new Map<string, string>();
-    for (const match of relsXml.matchAll(/Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"/g)) {
-      const target = match[2].replace(/^\//, '');
-      relationshipMap.set(match[1], target.startsWith('xl/') ? target : `xl/${target}`);
-    }
+    const relationships = parseWorkbookRelationships(relsXml);
     if (options.sheetName && !sheets.some((sheet) => sheet.name === options.sheetName)) {
       return fail('UNSUPPORTED_FORMAT', `Worksheet not found: ${options.sheetName}`);
     }
     const selected = sheets.find((sheet) => sheet.name === options.sheetName) ?? sheets[0];
-    const sheetPath = relationshipMap.get(selected.relationshipId);
+    const sheetPath = resolveWorksheetPath(selected.relationshipId, relationships);
     if (!sheetPath) return fail('UNSUPPORTED_FORMAT', 'Worksheet relationship is missing.');
     const shared = sharedStrings(await get('xl/sharedStrings.xml'));
     const worksheetXml = await get(sheetPath);

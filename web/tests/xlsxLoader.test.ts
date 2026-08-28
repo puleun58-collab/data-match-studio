@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DOMParser as XmlDomParser } from '@xmldom/xmldom';
 import * as XLSX from 'xlsx';
-import { listXlsxSheets, loadXlsx, parseWorkbookSheets } from '../src/loaders/xlsxLoader';
+import { listXlsxSheets, loadXlsx, parseWorkbookRelationships, parseWorkbookSheets, resolveWorksheetPath } from '../src/loaders/xlsxLoader';
 import { decodeScalar } from '../src/engine/serialization';
 
 // Node's test runner has no browser DOMParser; xmldom implements enough of the
@@ -49,9 +49,24 @@ function buildZip(entries: { name: string; content: string }[]): Uint8Array {
 
 type SheetFixture = { name: string; rid: string; text: string };
 
-function relsXml(sheets: SheetFixture[]): string {
-  const body = sheets.map((sheet, index) => `<Relationship Id="${sheet.rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`).join('');
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${body}</Relationships>`;
+type RelationshipAttrOrder = 'id-target' | 'target-id' | 'type-target-id';
+type RelsOptions = { order?: RelationshipAttrOrder; prefix?: string; targets?: string[] };
+
+function relationshipTag(rid: string, target: string, prefix: string | undefined, order: RelationshipAttrOrder): string {
+  const tag = prefix ? `${prefix}:Relationship` : 'Relationship';
+  const typeAttr = 'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"';
+  const idAttr = `Id="${rid}"`;
+  const targetAttr = `Target="${target}"`;
+  const attrs = order === 'target-id' ? `${targetAttr} ${idAttr} ${typeAttr}` : order === 'type-target-id' ? `${typeAttr} ${targetAttr} ${idAttr}` : `${idAttr} ${targetAttr} ${typeAttr}`;
+  return `<${tag} ${attrs}/>`;
+}
+
+function relsXml(sheets: SheetFixture[], options: RelsOptions = {}): string {
+  const order = options.order ?? 'id-target';
+  const rootTag = options.prefix ? `${options.prefix}:Relationships` : 'Relationships';
+  const nsAttr = options.prefix ? `xmlns:${options.prefix}` : 'xmlns';
+  const body = sheets.map((sheet, index) => relationshipTag(sheet.rid, options.targets?.[index] ?? `worksheets/sheet${index + 1}.xml`, options.prefix, order)).join('');
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><${rootTag} ${nsAttr}="http://schemas.openxmlformats.org/package/2006/relationships">${body}</${rootTag}>`;
 }
 
 function worksheetXml(text: string): string {
@@ -66,10 +81,10 @@ function workbookXml(sheets: SheetFixture[], elementPrefix?: string, relPrefix =
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><${tag}workbook ${elementNsDecl} xmlns:${relPrefix}="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><${tag}sheets>${sheetsXml}</${tag}sheets></${tag}workbook>`;
 }
 
-function buildPackage(workbook: string, sheets: SheetFixture[]): Uint8Array {
+function buildPackage(workbook: string, sheets: SheetFixture[], relsOptions?: RelsOptions): Uint8Array {
   return buildZip([
     { name: 'xl/workbook.xml', content: workbook },
-    { name: 'xl/_rels/workbook.xml.rels', content: relsXml(sheets) },
+    { name: 'xl/_rels/workbook.xml.rels', content: relsXml(sheets, relsOptions) },
     ...sheets.map((sheet, index) => ({ name: `xl/worksheets/sheet${index + 1}.xml`, content: worksheetXml(sheet.text) })),
   ]);
 }
@@ -197,4 +212,118 @@ test('an existing SheetJS-generated XLSX fixture still loads (regression sanity 
   assert.deepEqual(loaded.value.headers, ['이름', '값']);
   assert.equal(decodeScalar(loaded.value.rows[0][0]), '행1');
   assert.equal(decodeScalar(loaded.value.rows[0][1]), 10);
+});
+
+test('parseWorkbookRelationships reads Id-then-Target attribute order', () => {
+  const relationships = parseWorkbookRelationships(relsXml([{ name: 'Sheet1', rid: 'R1', text: '' }], { order: 'id-target' }));
+  assert.deepEqual(relationships, [{ id: 'R1', target: 'worksheets/sheet1.xml', type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet' }]);
+});
+
+test('parseWorkbookRelationships reads Target-then-Id attribute order (the reported bug)', () => {
+  const relationships = parseWorkbookRelationships(relsXml([{ name: 'Sheet1', rid: 'R1', text: '' }], { order: 'target-id' }));
+  assert.deepEqual(relationships, [{ id: 'R1', target: 'worksheets/sheet1.xml', type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet' }]);
+});
+
+test('parseWorkbookRelationships reads Type-then-Target-then-Id attribute order', () => {
+  const relationships = parseWorkbookRelationships(relsXml([{ name: 'Sheet1', rid: 'R1', text: '' }], { order: 'type-target-id' }));
+  assert.deepEqual(relationships, [{ id: 'R1', target: 'worksheets/sheet1.xml', type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet' }]);
+});
+
+test('loadXlsx succeeds when the .rels file lists Target before Id, for every worksheet', async () => {
+  const fixture = [
+    { name: '첫번째', rid: 'R1', text: 'target-first-one' },
+    { name: '두번째', rid: 'R2', text: 'target-first-two' },
+  ];
+  const bytes = buildPackage(workbookXml(fixture, 'x'), fixture, { order: 'target-id' });
+  const first = await loadXlsx(bytes, { sheetName: '첫번째' });
+  const second = await loadXlsx(bytes, { sheetName: '두번째' });
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+  if (!first.ok || !second.ok) return;
+  assert.equal(decodeScalar(first.value.rows[0][0]), 'target-first-one');
+  assert.equal(decodeScalar(second.value.rows[0][0]), 'target-first-two');
+});
+
+test('Relationship elements without a namespace prefix parse correctly', () => {
+  const relationships = parseWorkbookRelationships(relsXml([{ name: 'Sheet1', rid: 'R1', text: '' }]));
+  assert.equal(relationships.length, 1);
+  assert.equal(relationships[0].id, 'R1');
+});
+
+test('r:Relationship namespace-prefixed elements parse correctly and loadXlsx still succeeds', async () => {
+  const fixture = [{ name: 'Sheet1', rid: 'R1', text: 'prefixedRelationship' }];
+  const relationships = parseWorkbookRelationships(relsXml(fixture, { prefix: 'r' }));
+  assert.deepEqual(relationships, [{ id: 'R1', target: 'worksheets/sheet1.xml', type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet' }]);
+  const bytes = buildPackage(workbookXml(fixture), fixture, { prefix: 'r' });
+  const loaded = await loadXlsx(bytes);
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) return;
+  assert.equal(decodeScalar(loaded.value.rows[0][0]), 'prefixedRelationship');
+});
+
+for (const target of ['worksheets/sheet1.xml', '/worksheets/sheet1.xml', 'xl/worksheets/sheet1.xml', '/xl/worksheets/sheet1.xml']) {
+  test(`resolveWorksheetPath normalizes relationship target "${target}" to xl/worksheets/sheet1.xml`, () => {
+    const path = resolveWorksheetPath('R1', [{ id: 'R1', target, type: 'worksheet' }]);
+    assert.equal(path, 'xl/worksheets/sheet1.xml');
+  });
+
+  test(`loadXlsx succeeds when the .rels Target is "${target}"`, async () => {
+    const fixture = [{ name: 'Sheet1', rid: 'R1', text: 'pathForm' }];
+    const bytes = buildPackage(workbookXml(fixture), fixture, { targets: [target] });
+    const loaded = await loadXlsx(bytes);
+    assert.equal(loaded.ok, true);
+    if (!loaded.ok) return;
+    assert.equal(decodeScalar(loaded.value.rows[0][0]), 'pathForm');
+  });
+}
+
+test('a sheet whose relationship id has no matching Relationship reports "Worksheet relationship is missing."', async () => {
+  const fixture = [{ name: 'Sheet1', rid: 'R-does-not-exist-in-rels', text: 'unused' }];
+  const bytes = buildZip([
+    { name: 'xl/workbook.xml', content: workbookXml(fixture) },
+    { name: 'xl/_rels/workbook.xml.rels', content: relsXml([]) },
+    { name: 'xl/worksheets/sheet1.xml', content: worksheetXml(fixture[0].text) },
+  ]);
+  const loaded = await loadXlsx(bytes);
+  assert.equal(loaded.ok, false);
+  if (loaded.ok) return;
+  assert.match(loaded.diagnostics[0].message, /Worksheet relationship is missing/);
+});
+
+test('malformed workbook.xml.rels is reported as a distinct parse failure', async () => {
+  const malformedRels = '<Relationships><Relationship Id="R1"></Relationships>';
+  assert.throws(() => parseWorkbookRelationships(malformedRels));
+  const fixture = [{ name: 'Sheet1', rid: 'R1', text: 'unused' }];
+  const bytes = buildZip([
+    { name: 'xl/workbook.xml', content: workbookXml(fixture) },
+    { name: 'xl/_rels/workbook.xml.rels', content: malformedRels },
+    { name: 'xl/worksheets/sheet1.xml', content: worksheetXml(fixture[0].text) },
+  ]);
+  const loaded = await loadXlsx(bytes);
+  assert.equal(loaded.ok, false);
+  if (loaded.ok) return;
+  assert.doesNotMatch(loaded.diagnostics[0].message, /Worksheet relationship is missing/);
+  assert.doesNotMatch(loaded.diagnostics[0].message, /no worksheets/i);
+});
+
+test('exact bug-report fixture: x:sheet + Type/Target/Id-ordered Relationship loads end to end', async () => {
+  const workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><x:workbook xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><x:sheets><x:sheet name="데이터A" sheetId="1" r:id="R774b0d33cb0642f8"/></x:sheets></x:workbook>';
+  const rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml" Id="R774b0d33cb0642f8"/></Relationships>';
+  const bytes = buildZip([
+    { name: 'xl/workbook.xml', content: workbook },
+    { name: 'xl/_rels/workbook.xml.rels', content: rels },
+    { name: 'xl/worksheets/sheet1.xml', content: worksheetXml('안녕') },
+  ]);
+  const sheets = parseWorkbookSheets(workbook);
+  assert.deepEqual(sheets, [{ name: '데이터A', relationshipId: 'R774b0d33cb0642f8' }]);
+  const relationships = parseWorkbookRelationships(rels);
+  assert.equal(resolveWorksheetPath('R774b0d33cb0642f8', relationships), 'xl/worksheets/sheet1.xml');
+  const listed = await listXlsxSheets(bytes);
+  assert.equal(listed.ok, true);
+  if (!listed.ok) return;
+  assert.deepEqual(listed.sheets, ['데이터A']);
+  const loaded = await loadXlsx(bytes);
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) return;
+  assert.equal(decodeScalar(loaded.value.rows[0][0]), '안녕');
 });
