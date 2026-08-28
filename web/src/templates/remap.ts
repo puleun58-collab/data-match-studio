@@ -1,8 +1,21 @@
 import type { ScalarV1, Table } from '../engine/contracts';
+import type { NullPolicy } from '../engine/comparisonEngine';
+import type { MappingGroup } from '../mapping/keyMapping';
 
-export type BrowserTemplateV2 = { version: 2; expectations: { side: 'both'; index: number; id: string; raw: string; display: string; normalizedName: string; sheet: string | null; fingerprint: string; occurrence: number }[]; keyColumns: (string | number)[]; compareColumns: (string | number)[]; rules: { id: string; columnA: string | number; columnB: string | number; dataType?: 'text' | 'number' | 'date' | 'boolean'; aggregationMethod?: 'sum' | 'mean' | 'min' | 'max' | 'count' | 'nunique' | 'concat_unique'; nullPolicy?: import('../engine/comparisonEngine').NullPolicy }[]; representativeColumn?: string | number; caseSensitive: boolean; duplicatePolicy: string };
+export type BrowserTemplateV2 = {
+  version: 2;
+  expectations: { side: 'both'; index: number; id: string; raw: string; display: string; normalizedName: string; sheet: string | null; fingerprint: string; occurrence: number }[];
+  keyColumns: (string | number)[];
+  keyColumnsB?: (string | number)[];
+  compareColumns: (string | number)[];
+  rules: { id: string; columnA: string | number; columnB: string | number; dataType?: 'text' | 'number' | 'date' | 'boolean'; aggregationMethod?: 'sum' | 'mean' | 'min' | 'max' | 'count' | 'nunique' | 'concat_unique'; nullPolicy?: NullPolicy }[];
+  representativeColumn?: string | number;
+  caseSensitive: boolean;
+  duplicatePolicy: string;
+  keyMapping?: { enabled: boolean; name: string; groups: MappingGroup[]; applyA: (string | number)[]; applyB: (string | number)[] };
+};
 export type RemapDiagnostic = { code: string; message: string };
-export type RemappedConfig = Pick<BrowserTemplateV2, 'keyColumns' | 'compareColumns' | 'rules' | 'representativeColumn' | 'caseSensitive' | 'duplicatePolicy'>;
+export type RemappedConfig = Pick<BrowserTemplateV2, 'keyColumns' | 'keyColumnsB' | 'compareColumns' | 'rules' | 'representativeColumn' | 'caseSensitive' | 'duplicatePolicy' | 'keyMapping'>;
 
 export function remapConfig(headers: string[], template: BrowserTemplateV2): { config?: RemappedConfig; diagnostics: RemapDiagnostic[] } {
   const diagnostics: RemapDiagnostic[] = [];
@@ -19,15 +32,32 @@ export function remapConfig(headers: string[], template: BrowserTemplateV2): { c
       if (candidate) remap.set(expectation.id, candidate); else diagnostics.push({ code: 'STALE_TEMPLATE_COLUMN', message: `Template column is missing: ${expectation.id}` });
     }
   }
-  const required = [...template.keyColumns, ...template.compareColumns, ...template.rules.flatMap((rule) => [rule.columnA, rule.columnB]), ...(template.representativeColumn ? [template.representativeColumn] : [])].filter((column): column is string => typeof column === 'string');
-  const numericReferences = [...template.keyColumns, ...template.compareColumns, ...template.rules.flatMap((rule) => [rule.columnA, rule.columnB]), ...(template.representativeColumn !== undefined ? [template.representativeColumn] : [])].filter((column): column is number => typeof column === 'number');
+  const mappingColumns = template.keyMapping ? [...template.keyMapping.applyA, ...template.keyMapping.applyB] : [];
+  const required = [...template.keyColumns, ...(template.keyColumnsB ?? template.keyColumns), ...template.compareColumns, ...template.rules.flatMap((rule) => [rule.columnA, rule.columnB]), ...(template.representativeColumn ? [template.representativeColumn] : []), ...mappingColumns].filter((column): column is string => typeof column === 'string');
+  const numericReferences = [...template.keyColumns, ...(template.keyColumnsB ?? template.keyColumns), ...template.compareColumns, ...template.rules.flatMap((rule) => [rule.columnA, rule.columnB]), ...(template.representativeColumn !== undefined ? [template.representativeColumn] : []), ...mappingColumns].filter((column): column is number => typeof column === 'number');
   if (numericReferences.some((column) => !Number.isInteger(column) || column < 0 || column >= headers.length)) diagnostics.push({ code: 'STALE_TEMPLATE_COLUMN', message: 'Template contains an out-of-range numeric column reference.' });
   const missing = [...new Set(required.filter((column) => !available.has(remap.get(column) ?? column)))];
   if (missing.length) diagnostics.push({ code: 'STALE_TEMPLATE_COLUMN', message: `Template columns are not present in both current datasets: ${missing.join(', ')}` });
   if (new Set(template.keyColumns).size !== template.keyColumns.length) diagnostics.push({ code: 'DUPLICATE_KEY_COLUMN', message: 'Template contains duplicate key columns.' });
   if (diagnostics.length) return { diagnostics };
   const resolve = (column: string | number) => typeof column === 'string' ? remap.get(column) ?? column : column;
-  return { config: { keyColumns: template.keyColumns.map(resolve), compareColumns: template.compareColumns.map(resolve), rules: template.rules.map((rule) => ({ ...rule, columnA: resolve(rule.columnA), columnB: resolve(rule.columnB) })), representativeColumn: template.representativeColumn === undefined ? undefined : resolve(template.representativeColumn), caseSensitive: template.caseSensitive, duplicatePolicy: template.duplicatePolicy }, diagnostics };
+  return {
+    config: {
+      keyColumns: template.keyColumns.map(resolve),
+      keyColumnsB: (template.keyColumnsB ?? template.keyColumns).map(resolve),
+      compareColumns: template.compareColumns.map(resolve),
+      rules: template.rules.map((rule) => ({ ...rule, columnA: resolve(rule.columnA), columnB: resolve(rule.columnB) })),
+      representativeColumn: template.representativeColumn === undefined ? undefined : resolve(template.representativeColumn),
+      caseSensitive: template.caseSensitive,
+      duplicatePolicy: template.duplicatePolicy,
+      keyMapping: template.keyMapping ? {
+        ...template.keyMapping,
+        applyA: template.keyMapping.applyA.map(resolve),
+        applyB: template.keyMapping.applyB.map(resolve),
+      } : undefined,
+    },
+    diagnostics,
+  };
 }
 
 export function applyAtomicRemap(table: Table, template: { version: 2; mappings: Record<string, string> }): { table?: Table; diagnostics: RemapDiagnostic[] } {

@@ -96,6 +96,8 @@ def apply_column_remap(config: ComparisonConfig, mapping: dict[str, str], diagno
     def replace(value: str | None) -> str | None: return mapping.get(value, value) if value is not None else None
     result.dataset_a.key_columns = [replace(x) for x in result.dataset_a.key_columns]
     result.dataset_b.key_columns = [replace(x) for x in result.dataset_b.key_columns]
+    result.dataset_a.key_mappings = {replace(column) or column: value for column, value in result.dataset_a.key_mappings.items()}
+    result.dataset_b.key_mappings = {replace(column) or column: value for column, value in result.dataset_b.key_mappings.items()}
     for rule in result.comparison_rules:
         rule.column_a_id = replace(rule.column_a_id) or rule.column_a_id
         rule.column_b_id = replace(rule.column_b_id) or rule.column_b_id

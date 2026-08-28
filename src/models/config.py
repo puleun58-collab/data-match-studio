@@ -49,6 +49,16 @@ class KeyNormalizationOptions:
 
 
 @dataclass
+class KeyMappingConfig:
+    name: str = "기본 키 매핑"
+    enabled: bool = False
+    groups: dict[str, list[Any]] = field(default_factory=dict)
+    canonical_column: str | None = None
+    alias_columns: list[str] = field(default_factory=list)
+    use_all_other_columns: bool = False
+
+
+@dataclass
 class DatasetConfig:
     file_name: str
     source_type: str
@@ -57,6 +67,7 @@ class DatasetConfig:
     data_start_row: int = 2
     key_columns: list[str] = field(default_factory=list)
     key_normalization: KeyNormalizationOptions = field(default_factory=KeyNormalizationOptions)
+    key_mappings: dict[str, KeyMappingConfig] = field(default_factory=dict)
     drop_empty_rows: bool = True
     drop_empty_columns: bool = True
     encoding: str | None = None
@@ -141,6 +152,10 @@ def config_from_dict(payload: dict[str, Any]) -> ComparisonConfig:
     def dataset(raw: dict[str, Any]) -> DatasetConfig:
         value = dict(raw)
         value["key_normalization"] = key_options(value.get("key_normalization"))
+        value["key_mappings"] = {
+            column: KeyMappingConfig(**mapping)
+            for column, mapping in value.get("key_mappings", {}).items()
+        }
         return DatasetConfig(**value)
 
     def null_policy(raw: dict[str, Any] | None) -> NullPolicy:

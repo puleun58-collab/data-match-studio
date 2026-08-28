@@ -22,10 +22,18 @@ def profile_duplicates(
     value_columns: list[str] | None = None,
 ) -> DuplicateProfile:
     value_columns = value_columns or []
+    use_standard_key = "__key_tuple" in frame.columns
+
+    def row_key(row: pd.Series) -> tuple[Any, ...]:
+        if use_standard_key:
+            value = row["__key_tuple"]
+            return value if isinstance(value, tuple) else (value,)
+        return tuple(row[column] for column in key_columns)
+
     counts: dict[tuple[Any, ...], int] = {}
     empty_key_count = 0
     for _, row in frame.iterrows():
-        key = tuple(row[column] for column in key_columns)
+        key = row_key(row)
         if any(pd.isna(value) or str(value).strip() == "" for value in key):
             empty_key_count += 1
             continue
@@ -35,7 +43,7 @@ def profile_duplicates(
     if value_columns:
         for key in duplicate_keys:
             subset = frame.loc[
-                frame.apply(lambda row: tuple(row[column] for column in key_columns) == key, axis=1),
+                frame.apply(lambda row: row_key(row) == key, axis=1),
                 value_columns,
             ]
             variation[key] = int(len(subset.drop_duplicates()))

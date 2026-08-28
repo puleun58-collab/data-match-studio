@@ -12,16 +12,28 @@ function comparisonValues(row: ComparisonResult['rows'][number], side: 'A' | 'B'
   return [...new Set(values)].join(' | ');
 }
 
+function keyMappingValue(row: ComparisonResult['rows'][number], side: 'A' | 'B', field: 'original' | 'normalized' | 'standard'): string {
+  return (row.keyMapping?.[side] ?? [])
+    .map(keyRow => keyRow.map(item => item[field] === null ? '(빈 값)' : String(item[field])).join(' | '))
+    .filter((value, index, values) => values.indexOf(value) === index)
+    .join(' / ');
+}
+
+function mappingApplied(row: ComparisonResult['rows'][number], side: 'A' | 'B'): string {
+  return (row.keyMapping?.[side] ?? []).some(keyRow => keyRow.some(item => item.applied)) ? 'Yes' : 'No';
+}
+
 export function resultCsv(result: ComparisonResult): string {
   const quote = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`;
-  return ['key,status,displayStatus,aCount,bCount,firstSheetValue,secondSheetValue', ...result.rows.map((row) => [row.key.map(decodeScalar).join(' | '), row.status, row.displayStatus, row.aCount, row.bCount, comparisonValues(row, 'A'), comparisonValues(row, 'B')].map(quote).join(','))].join('\n');
+  const headers = ['key', 'status', 'displayStatus', 'aCount', 'bCount', 'aOriginalKey', 'aNormalizedKey', 'aStandardKey', 'aMappingApplied', 'bOriginalKey', 'bNormalizedKey', 'bStandardKey', 'bMappingApplied', 'firstSheetValue', 'secondSheetValue'];
+  return [headers.join(','), ...result.rows.map((row) => [row.key.map(decodeScalar).join(' | '), row.status, row.displayStatus, row.aCount, row.bCount, keyMappingValue(row, 'A', 'original'), keyMappingValue(row, 'A', 'normalized'), keyMappingValue(row, 'A', 'standard'), mappingApplied(row, 'A'), keyMappingValue(row, 'B', 'original'), keyMappingValue(row, 'B', 'normalized'), keyMappingValue(row, 'B', 'standard'), mappingApplied(row, 'B'), comparisonValues(row, 'A'), comparisonValues(row, 'B')].map(quote).join(','))].join('\n');
 }
 
 export function downloadResultCsv(result: ComparisonResult): void { save(resultCsv(result), 'data-match-result.csv', 'text/csv;charset=utf-8'); }
 export function downloadResultJson(result: ComparisonResult): void { save(JSON.stringify(result, null, 2), 'data-match-result.json', 'application/json'); }
 export function downloadResultXlsx(result: ComparisonResult): void {
   const validRows = result.rows.filter((row) => row.status !== 'invalid-key');
-  const rows = validRows.map((row) => ({ Lane: row.key.map(decodeScalar).join(' | '), 판정: row.status === 'matched' ? '일치' : row.status === 'changed' ? '불일치' : row.displayStatus, 첫_시트_행수: row.aCount, 두번째_시트_행수: row.bCount, 첫_시트_비교값: comparisonValues(row, 'A'), 두번째_시트_비교값: comparisonValues(row, 'B') }));
+  const rows = validRows.map((row) => ({ Lane: row.key.map(decodeScalar).join(' | '), 판정: row.status === 'matched' ? '일치' : row.status === 'changed' ? '불일치' : row.displayStatus, 첫_시트_행수: row.aCount, 두번째_시트_행수: row.bCount, A_원본_키: keyMappingValue(row, 'A', 'original'), A_정규화_키: keyMappingValue(row, 'A', 'normalized'), A_표준_키: keyMappingValue(row, 'A', 'standard'), A_매핑_적용: mappingApplied(row, 'A'), B_원본_키: keyMappingValue(row, 'B', 'original'), B_정규화_키: keyMappingValue(row, 'B', 'normalized'), B_표준_키: keyMappingValue(row, 'B', 'standard'), B_매핑_적용: mappingApplied(row, 'B'), 첫_시트_비교값: comparisonValues(row, 'A'), 두번째_시트_비교값: comparisonValues(row, 'B') }));
   const blankRows = result.rows.filter((row) => row.status === 'invalid-key').map((row) => { const side = row.aCount ? 'A' : 'B'; const rowIndex = side === 'A' ? row.provenance.leftRow : row.provenance.rightRow; return { 시트: side === 'A' ? '첫 번째 시트' : '두 번째 시트', Excel_행: (rowIndex ?? 0) + 2, 선택한_비교값: comparisonValues(row, side), 사유: '선택한 Lane 키 컬럼이 비어 있음' }; });
   const matched = validRows.filter((row) => row.status === 'matched').length;
   const mismatched = validRows.filter((row) => row.status === 'changed').length;

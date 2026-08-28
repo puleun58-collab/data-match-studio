@@ -1,24 +1,38 @@
 import type { ScalarV1, Table } from './contracts';
 import { decodeScalar, encodeScalar, serializeDeterministic } from './serialization';
+import { applyKeyMapping, type KeyMappingSelection, type KeyMappingTrace, type KeyNormalizationOptions } from '../mapping/keyMapping';
 
 export type DuplicatePolicy = 'report' | 'first' | 'last' | 'set' | 'multiset' | 'aggregate' | 'representative';
 export type NullPolicy = { bothEmptyEqual?: boolean; oneEmptyMismatch?: boolean; emptyEqualsZero?: boolean; emptyEqualsFalse?: boolean; emptyEqualsText?: string; missingTokens?: string[] };
 export type ComparisonRule = { id: string; columnA: string | number; columnB: string | number; dataType?: 'text' | 'number' | 'date' | 'boolean'; caseSensitive?: boolean; aggregationMethod?: 'sum' | 'mean' | 'min' | 'max' | 'count' | 'nunique' | 'concat_unique'; nullPolicy?: NullPolicy };
-export type ComparisonConfig = { keyColumns: (string | number)[]; keyColumnsB?: (string | number)[]; compareColumns?: (string | number)[]; rules?: ComparisonRule[]; caseSensitive?: boolean; duplicatePolicy?: DuplicatePolicy; nmPolicy?: DuplicatePolicy; representativeColumn?: string | number };
+export type ComparisonConfig = { keyColumns: (string | number)[]; keyColumnsB?: (string | number)[]; compareColumns?: (string | number)[]; rules?: ComparisonRule[]; caseSensitive?: boolean; keyNormalization?: KeyNormalizationOptions; keyMappings?: { A?: Record<string, KeyMappingSelection>; B?: Record<string, KeyMappingSelection> }; duplicatePolicy?: DuplicatePolicy; nmPolicy?: DuplicatePolicy; representativeColumn?: string | number };
 export type ComparisonStatus = 'matched' | 'added' | 'removed' | 'changed' | 'duplicate' | 'nm-pending' | 'invalid-key' | 'conversion-failed';
 export type OutcomeFlag = 'comparable' | 'identical' | 'mismatch' | 'conversion_failed' | 'duplicate' | 'nm_pending' | 'a_only' | 'b_only' | 'invalid_key' | 'structural_block';
 export type TraceItem = { side: 'A' | 'B'; ruleId: string; rowIndex: number; ordinal: number; originalValues: ScalarV1[]; normalizedValues: ScalarV1[]; status: string; reason: string; conversionSuccess: boolean; numericDifference?: number; absoluteDifference?: number; differenceRate?: number; values: ScalarV1[] };
-export type ComparisonRow = { key: ScalarV1[]; status: ComparisonStatus; displayStatus: string; flags: OutcomeFlag[]; left: ScalarV1[] | null; right: ScalarV1[] | null; aCount: number; bCount: number; trace: TraceItem[]; provenance: { leftRow?: number; rightRow?: number } };
+export type ComparisonRow = { key: ScalarV1[]; keyMapping?: { A: KeyMappingTrace[][]; B: KeyMappingTrace[][] }; status: ComparisonStatus; displayStatus: string; flags: OutcomeFlag[]; left: ScalarV1[] | null; right: ScalarV1[] | null; aCount: number; bCount: number; trace: TraceItem[]; provenance: { leftRow?: number; rightRow?: number } };
 export type ComparisonSummary = { total: number; comparable: number; identical: number; mismatch: number; aOnly: number; bOnly: number; duplicate: number; conversionFailed: number; nmPending: number; matchRate: number };
 export type ComparisonResult = { rows: ComparisonRow[]; diagnostics: { code: string; message: string; details?: Record<string, ScalarV1> }[]; summary: ComparisonSummary };
 
 function col(table: Table, c: string | number): number { return typeof c === 'number' ? c : table.headers.indexOf(c); }
-function keyValues(row: ScalarV1[], table: Table, config: ComparisonConfig, side: 'A' | 'B'): ScalarV1[] { return (side === 'B' ? config.keyColumnsB ?? config.keyColumns : config.keyColumns).map((c) => row[col(table, c)] ?? encodeScalar(null)); }
+function keyColumns(config: ComparisonConfig, side: 'A' | 'B'): (string | number)[] { return side === 'B' ? config.keyColumnsB ?? config.keyColumns : config.keyColumns; }
+function keyTraceValues(row: ScalarV1[], table: Table, config: ComparisonConfig, side: 'A' | 'B'): KeyMappingTrace[] {
+  return keyColumns(config, side).map((column) => {
+    const value = decodeScalar(row[col(table, column)] ?? encodeScalar(null));
+    const selection = config.keyMappings?.[side]?.[String(column)];
+    if (!selection?.enabled) return { original: value, normalized: value, standard: value, applied: false, mappingEnabled: false };
+    const options = { trim: true, ...config.keyNormalization, caseInsensitive: config.caseSensitive === false || config.keyNormalization?.caseInsensitive === true };
+    return applyKeyMapping(value, selection, options);
+  });
+}
+function keyValues(row: ScalarV1[], table: Table, config: ComparisonConfig, side: 'A' | 'B'): ScalarV1[] { return keyTraceValues(row, table, config, side).map(item => encodeScalar(item.standard)); }
 function keyOf(row: ScalarV1[], table: Table, config: ComparisonConfig, side: 'A' | 'B'): string | null {
-  const values = keyValues(row, table, config, side);
-  if (values.some((value) => value.type === 'null' || (value.type === 'string' && String(value.value).trim() === ''))) return null;
-  const text = serializeDeterministic(values.map(decodeScalar));
-  return config.caseSensitive === false ? text.toLocaleLowerCase() : text;
+  const values = keyTraceValues(row, table, config, side);
+  if (values.some(value => value.standard === null || value.standard === undefined || (typeof value.standard === 'string' && !value.standard.trim()))) return null;
+  const serialized = serializeDeterministic(values.map(value => value.standard));
+  return config.caseSensitive === false ? serialized.toLocaleLowerCase() : serialized;
+}
+function keyMappingDetails(leftMembers: { row: ScalarV1[] }[], rightMembers: { row: ScalarV1[] }[], left: Table, right: Table, config: ComparisonConfig) {
+  return { A: leftMembers.map(member => keyTraceValues(member.row, left, config, 'A')), B: rightMembers.map(member => keyTraceValues(member.row, right, config, 'B')) };
 }
 function rulesFor(config: ComparisonConfig): ComparisonRule[] { return config.rules?.length ? config.rules : (config.compareColumns ?? []).map((column, index) => ({ id: `rule-${index + 1}`, columnA: column, columnB: column })); }
 function normalize(value: unknown, rule: ComparisonRule): { value: unknown; ok: boolean } {
@@ -70,8 +84,10 @@ export function compareTables(left: Table, right: Table, config: ComparisonConfi
   if (rightDuplicateGroups) diagnostics.push({ code: 'DUPLICATE_KEY', message: `두 번째 시트에서 중복 키 그룹 ${rightDuplicateGroups}개를 찾았습니다.` });
   const keys = new Set([...leftGroups.keys(), ...rightGroups.keys()]);
   const rows: ComparisonRow[] = [];
+  const keyMappingByKey = new Map<string, { A: KeyMappingTrace[][]; B: KeyMappingTrace[][] }>();
   for (const key of keys) {
     const leftMembers = leftGroups.get(key) ?? [], rightMembers = rightGroups.get(key) ?? [];
+    keyMappingByKey.set(key, keyMappingDetails(leftMembers, rightMembers, left, right, config));
     const aCount = leftMembers.length, bCount = rightMembers.length;
     const duplicate = aCount > 1 || bCount > 1;
     const policy = config.nmPolicy ?? config.duplicatePolicy ?? 'report';
@@ -131,6 +147,13 @@ export function compareTables(left: Table, right: Table, config: ComparisonConfi
     });
     rows.push({ key: keyValues(item.row, table, config, item.side), status: 'invalid-key', displayStatus: '빈 키', flags: ['invalid_key', 'structural_block'], left: item.side === 'A' ? item.row : null, right: item.side === 'B' ? item.row : null, aCount: item.side === 'A' ? 1 : 0, bCount: item.side === 'B' ? 1 : 0, trace: invalidTrace, provenance: item.side === 'A' ? { leftRow: item.index } : { rightRow: item.index } });
   }
+  rows.forEach(row => {
+    const serializedKey = serializeDeterministic(row.key.map(decodeScalar));
+    row.keyMapping = keyMappingByKey.get(serializedKey) ?? {
+      A: row.left ? [keyTraceValues(row.left, left, config, 'A')] : [],
+      B: row.right ? [keyTraceValues(row.right, right, config, 'B')] : [],
+    };
+  });
   const summary: ComparisonSummary = { total: rows.length, comparable: rows.filter((row) => row.flags.includes('comparable')).length, identical: rows.filter((row) => row.flags.includes('identical')).length, mismatch: rows.filter((row) => row.flags.includes('mismatch')).length, aOnly: rows.filter((row) => row.flags.includes('a_only')).length, bOnly: rows.filter((row) => row.flags.includes('b_only')).length, duplicate: rows.filter((row) => row.flags.includes('duplicate')).length, conversionFailed: rows.filter((row) => row.flags.includes('conversion_failed')).length, nmPending: rows.filter((row) => row.flags.includes('nm_pending')).length, matchRate: 0 };
   summary.matchRate = summary.comparable ? (summary.identical / summary.comparable) * 100 : 0;
   return { rows, diagnostics, summary };

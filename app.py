@@ -14,12 +14,14 @@ from src.export import export_csv, export_excel
 from src.loaders import loader_for
 from src.matching.join_engine import analyze_cardinality, cardinality_summary
 from src.matching.key_builder import add_key_columns
+from src.mapping import MappingGroup, build_mapping, dump_mapping_json, groups_from_wide_frame, load_mapping_json
 from src.models.config import (
     ColumnRef,
     ComparisonConfig,
     ComparisonRule,
     DatasetConfig,
     DuplicatePolicy,
+    KeyMappingConfig,
     KeyNormalizationOptions,
     NullPolicy,
     ToleranceOptions,
@@ -167,6 +169,19 @@ def main() -> None:
         st.session_state.keys_b = [ref.display_name for ref in refs_b if ref.column_id in pending_template.dataset_b.key_columns]
         st.session_state.join_type = pending_template.join_type
         st.session_state.nm_policy = pending_template.nm_policy
+        mapping_a = pending_template.dataset_a.key_mappings
+        mapping_b = pending_template.dataset_b.key_mappings
+        if mapping_a or mapping_b:
+            st.session_state.use_key_mapping = True
+            st.session_state.pop("mapping_manual_editor", None)
+            st.session_state.mapping_apply_a = list(mapping_a)
+            st.session_state.mapping_apply_b = list(mapping_b)
+            merged_groups: dict[str, list[Any]] = {}
+            for mapping in [*mapping_a.values(), *mapping_b.values()]:
+                for canonical, aliases in mapping.groups.items():
+                    merged_groups.setdefault(canonical, [])
+                    merged_groups[canonical].extend(alias for alias in aliases if alias not in merged_groups[canonical])
+            st.session_state.template_mapping_groups = merged_groups
         st.session_state.rules = [{"rule_id": rule.rule_id, "display_name": rule.display_name, "column_a_id": rule.column_a_id, "column_b_id": rule.column_b_id, "data_type": rule.data_type, "comparison_method": rule.comparison_method, "normalization_options": rule.normalization_options, "null_policy": rule.null_policy.__dict__, "tolerance_options": rule.tolerance_options.__dict__} for rule in pending_template.comparison_rules]
 
     tabs = st.tabs(["원본 미리보기", "데이터 품질", "키·중복 분석", "비교 규칙", "결과", "다운로드"])
@@ -192,14 +207,34 @@ def main() -> None:
         config_a.key_columns = [label_to_id_a[value] for value in keys_a_labels]
         config_b.key_columns = [label_to_id_b[value] for value in keys_b_labels]
         config_a.key_normalization = key_options
+        mapping_result, mapping_ready = render_key_mapping_options(
+            key_options,
+            config_a,
+            config_b,
+            refs_a,
+            refs_b,
+        )
         config_b.key_normalization = key_options
 
     with tabs[2]:
         st.subheader("키 분석")
         if config_a.key_columns and config_b.key_columns and len(config_a.key_columns) == len(config_b.key_columns):
-            keyed_a = add_key_columns(frame_a, config_a.key_columns, key_options)
-            keyed_b = add_key_columns(frame_b, config_b.key_columns, key_options)
+            keyed_a = add_key_columns(frame_a, config_a.key_columns, key_options, config_a.key_mappings)
+            keyed_b = add_key_columns(frame_b, config_b.key_columns, key_options, config_b.key_mappings)
             cardinalities = analyze_cardinality(keyed_a, keyed_b)
+            if mapping_result is not None:
+                st.markdown("#### 키 매핑 진단")
+                mapping_labels = {
+                    "canonical_count": "대표값 개수",
+                    "alias_count": "전체 별칭 개수",
+                    "mapping_item_count": "매핑 전체 항목 수",
+                    "duplicate_alias_count": "중복 별칭 개수",
+                    "empty_alias_cell_count": "빈 별칭 셀 개수",
+                    "collision_alias_count": "충돌 별칭 개수",
+                }
+                st.dataframe(pd.DataFrame([{"항목": mapping_labels[key], "값": mapping_result.stats[key]} for key in mapping_labels]), use_container_width=True)
+                st.caption(f"매핑 적용 가능 상태: {'가능' if mapping_result.applicable else '불가'}")
+                st.dataframe(pd.DataFrame(mapping_result.preview), use_container_width=True)
             summary = cardinality_summary(cardinalities)
             st.json(summary)
             profile_a = profile_duplicates(keyed_a, config_a.key_columns)
@@ -290,15 +325,15 @@ def main() -> None:
 
     with st.sidebar:
         st.header("6. 실행")
-        if st.button("비교 실행", type="primary", disabled=not (config_a.key_columns and config_b.key_columns and rules)):
+        if st.button("비교 실행", type="primary", disabled=not (config_a.key_columns and config_b.key_columns and rules and mapping_ready)):
             try:
                 validate_config(join_type, config_a.key_columns, config_b.key_columns, len(rules))
-                keyed_a = add_key_columns(frame_a, config_a.key_columns, config_a.key_normalization)
-                keyed_b = add_key_columns(frame_b, config_b.key_columns, config_b.key_normalization)
+                keyed_a = add_key_columns(frame_a, config_a.key_columns, config_a.key_normalization, config_a.key_mappings)
+                keyed_b = add_key_columns(frame_b, config_b.key_columns, config_b.key_normalization, config_b.key_mappings)
                 rows = ComparisonEngine().compare(keyed_a, keyed_b, config)
                 st.session_state.results = {"rows": rows, "config": config, "quality": pd.concat([profile_to_frame(profile_frame(frame_a)).assign(데이터셋="A"), profile_to_frame(profile_frame(frame_b)).assign(데이터셋="B")], ignore_index=True), "summary": summarize(rows)}
                 st.success("비교가 완료되었습니다.")
-            except DataCompareError as exc:
+            except (DataCompareError, ValueError) as exc:
                 st.error(str(exc))
             except Exception:
                 st.error("비교를 완료하지 못했습니다. 키, 비교 열, 중복 정책 설정을 확인하세요.")
@@ -367,6 +402,145 @@ def render_key_options(title: str) -> KeyNormalizationOptions:
             strip_numeric_dot_zero=st.checkbox("숫자형 문자열 끝 .0 제거", True, key="key_dotzero"),
             coerce_numeric_string=st.checkbox("숫자·문자 표현 통일", False, key="key_numeric"),
         )
+
+
+def render_key_mapping_options(
+    options: KeyNormalizationOptions,
+    config_a: DatasetConfig,
+    config_b: DatasetConfig,
+    refs_a: list[ColumnRef],
+    refs_b: list[ColumnRef],
+) -> tuple[Any | None, bool]:
+    enabled = st.checkbox("키 매핑 사전 사용", value=False, key="use_key_mapping")
+    config_a.key_mappings = {}
+    config_b.key_mappings = {}
+    if not enabled:
+        return None, True
+
+    groups: list[MappingGroup] = []
+    with st.expander("키 매핑 사전", expanded=True):
+        st.caption("Wide 형식의 XLSX·CSV를 브라우저 세션에서만 읽습니다. 대표값 열은 직접 선택하세요.")
+        mapping_file = st.file_uploader("매핑 파일", type=["xlsx", "csv"], key="mapping_file")
+        if mapping_file is not None:
+            try:
+                payload = mapping_file.getvalue()
+                validate_upload(mapping_file.name, len(payload), MAX_UPLOAD_BYTES)
+                sheet_infos = cached_sheet_infos(mapping_file.name, payload)
+                sheet_names = [item.name for item in sheet_infos]
+                selected_sheet = st.selectbox("매핑 시트", sheet_names, key="mapping_sheet")
+                selected_info = next(item for item in sheet_infos if item.name == selected_sheet)
+                header_candidates = list(range(1, min(len(selected_info.preview), 20) + 1)) or [1]
+                header_row = st.selectbox("매핑 헤더 행", header_candidates, key="mapping_header")
+                suffix = Path(mapping_file.name).suffix.lower()
+                mapping_frame = cached_load_frame(
+                    mapping_file.name,
+                    payload,
+                    selected_sheet,
+                    header_row,
+                    header_row + 1,
+                    "utf-8-sig" if suffix == ".csv" else None,
+                    "," if suffix == ".csv" else None,
+                    False,
+                    False,
+                )
+                mapping_columns = [str(column) for column in mapping_frame.columns]
+                if mapping_columns:
+                    canonical_column = st.selectbox("대표값 컬럼", mapping_columns, key="mapping_canonical_column")
+                    all_other = st.checkbox("대표값 컬럼을 제외한 나머지 컬럼을 모두 별칭으로 사용", value=True, key="mapping_all_aliases")
+                    alias_options = [column for column in mapping_columns if column != canonical_column]
+                    alias_columns = alias_options if all_other else st.multiselect("별칭 컬럼", alias_options, key="mapping_alias_columns")
+                    with st.expander("원본 Wide 미리보기", expanded=False):
+                        st.dataframe(mapping_frame.head(50), use_container_width=True)
+                    if alias_columns:
+                        groups.extend(groups_from_wide_frame(mapping_frame, canonical_column, alias_columns))
+                    else:
+                        st.error("별칭 컬럼을 하나 이상 선택하세요.")
+                else:
+                    st.error("매핑 파일에 사용할 수 있는 컬럼이 없습니다.")
+            except (DataCompareError, ValueError) as exc:
+                st.error(str(exc))
+            except Exception:
+                st.error("매핑 파일을 읽지 못했습니다. 시트, 헤더 행, 파일 형식을 확인하세요.")
+
+        json_file = st.file_uploader("키 매핑 JSON 불러오기", type=["json"], key="mapping_json_file")
+        if json_file is not None:
+            try:
+                groups.extend(load_mapping_json(json_file.getvalue()))
+            except ValueError as exc:
+                st.error(str(exc))
+
+        template_groups = st.session_state.pop("template_mapping_groups", None)
+        if template_groups:
+            st.session_state.mapping_manual_seed = [
+                {"대표값": canonical, "별칭 (쉼표 구분)": ", ".join(map(str, aliases))}
+                for canonical, aliases in template_groups.items()
+            ]
+        manual_seed = st.session_state.get(
+            "mapping_manual_seed",
+            [{"대표값": "", "별칭 (쉼표 구분)": ""}],
+        )
+        manual = st.data_editor(
+            pd.DataFrame(manual_seed),
+            num_rows="dynamic",
+            use_container_width=True,
+            key="mapping_manual_editor",
+            column_config={
+                "대표값": st.column_config.TextColumn("대표값"),
+                "별칭 (쉼표 구분)": st.column_config.TextColumn("별칭 (쉼표 구분)"),
+            },
+        )
+        for index, row in manual.iterrows():
+            canonical = row.get("대표값")
+            if canonical is None or not str(canonical).strip():
+                continue
+            aliases = tuple(value.strip() for value in str(row.get("별칭 (쉼표 구분)") or "").split(",") if value.strip())
+            groups.append(MappingGroup(str(canonical).strip(), aliases, int(index) + 2))
+
+        if not groups:
+            st.warning("매핑 파일, JSON 또는 직접 입력으로 별칭 그룹을 추가하세요.")
+            return None, False
+
+        mapping_result = build_mapping(groups, options)
+        for issue in mapping_result.issues:
+            if issue.severity == "error":
+                st.error(issue.message)
+            else:
+                st.warning(issue.message)
+
+        groups_payload: dict[str, list[Any]] = {}
+        for group in groups:
+            if group.canonical is None or not str(group.canonical).strip():
+                continue
+            canonical = str(group.canonical).strip()
+            groups_payload.setdefault(canonical, [])
+            groups_payload[canonical].extend(alias for alias in group.aliases if alias is not None and str(alias).strip())
+
+        st.download_button(
+            "현재 키 매핑 JSON 저장",
+            dump_mapping_json(groups),
+            file_name="key-mapping.json",
+            mime="application/json",
+        )
+        selected_a = st.multiselect(
+            "A에서 매핑을 적용할 키 컬럼",
+            config_a.key_columns,
+            key="mapping_apply_a",
+            format_func=lambda value: ref_label(refs_a, value),
+        )
+        selected_b = st.multiselect(
+            "B에서 매핑을 적용할 키 컬럼",
+            config_b.key_columns,
+            key="mapping_apply_b",
+            format_func=lambda value: ref_label(refs_b, value),
+        )
+        mapping_config = KeyMappingConfig("기본 키 매핑", True, groups_payload)
+        config_a.key_mappings = {column: mapping_config for column in selected_a}
+        config_b.key_mappings = {column: mapping_config for column in selected_b}
+        if not selected_a and not selected_b:
+            st.error("매핑을 적용할 키 컬럼을 하나 이상 선택하세요.")
+        with st.expander("내부 alias → canonical 미리보기", expanded=False):
+            st.dataframe(pd.DataFrame(mapping_result.preview), use_container_width=True)
+        return mapping_result, mapping_result.applicable and bool(selected_a or selected_b)
 
 
 def render_duplicate_policy(side: str, refs: list[ColumnRef]) -> DuplicatePolicy:

@@ -23,6 +23,15 @@ function displayValue(value: unknown): string {
     : value === null ? '(빈 값)' : String(value);
 }
 
+function keyTraceDisplay(
+  row: ComparisonResult['rows'][number],
+  side: 'A' | 'B',
+  field: 'original' | 'normalized' | 'standard',
+): string {
+  const values = (row.keyMapping?.[side] ?? []).map(keyRow => keyRow.map(item => displayValue(item[field])).join(' / '));
+  return [...new Set(values)].join(', ') || '-';
+}
+
 function comparisonValues(
   resultRow: ComparisonResult['rows'][number],
   side: 'A' | 'B',
@@ -97,7 +106,11 @@ export default function ResultsPanel({ result, rules = [], onRetry, isReady, dup
   const validRows = useMemo(() => result?.rows.filter(row => row.status !== 'invalid-key') ?? [], [result]);
   const blankRows = useMemo(() => result?.rows.filter(row => row.status === 'invalid-key') ?? [], [result]);
   const rows = useMemo(
-    () => validRows.filter(row => (status === 'all' || row.status === status) && row.key.map(decodeScalar).join(' / ').toLowerCase().includes(query.toLowerCase())),
+    () => validRows.filter(row => {
+      if (status !== 'all' && row.status !== status) return false;
+      const mappingText = Object.values(row.keyMapping ?? {}).flat(2).flatMap(item => [item.original, item.normalized, item.standard]).join(' ');
+      return `${row.key.map(decodeScalar).join(' / ')} ${mappingText}`.toLowerCase().includes(query.toLowerCase());
+    }),
     [validRows, status, query],
   );
 
@@ -125,6 +138,12 @@ export default function ResultsPanel({ result, rules = [], onRetry, isReady, dup
   const firstBlank = blankRows.filter(row => row.aCount > 0).length;
   const secondBlank = blankRows.filter(row => row.bCount > 0).length;
   const matchRate = matched + mismatched ? matched / (matched + mismatched) * 100 : 0;
+  const mappingTraces = validRows.flatMap(row => [...(row.keyMapping?.A ?? []), ...(row.keyMapping?.B ?? [])]).flat();
+  const eligibleMappingTraces = mappingTraces.filter(item => item.mappingEnabled);
+  const mappingUsed = eligibleMappingTraces.length > 0;
+  const uniqueNormalizedKeys = new Set(eligibleMappingTraces.map(item => item.normalized).filter(value => value !== null));
+  const mappedKeys = new Set(eligibleMappingTraces.filter(item => item.applied).map(item => item.normalized));
+  const mappingRate = uniqueNormalizedKeys.size ? mappedKeys.size / uniqueNormalizedKeys.size * 100 : 0;
   const conversionRuleNames = rules
     .filter(rule => validRows.some(row => row.status === 'conversion-failed' && row.trace.some(trace => trace.ruleId === rule.id && !trace.conversionSuccess)))
     .map(rule => `${String(rule.columnA)} ↔ ${String(rule.columnB)}`);
@@ -163,6 +182,7 @@ export default function ResultsPanel({ result, rules = [], onRetry, isReady, dup
               <div><span>빈 키 행</span><strong>{blankRows.length.toLocaleString('ko-KR')}</strong></div>
               <div><span>첫 시트에만</span><strong>{firstOnly.toLocaleString('ko-KR')}</strong></div>
               <div><span>두 번째 시트에만</span><strong>{secondOnly.toLocaleString('ko-KR')}</strong></div>
+              {mappingUsed ? <div><span>매핑 적용률</span><strong>{mappingRate.toFixed(2)}%</strong></div> : null}
             </div>
           </div>
 
@@ -206,6 +226,7 @@ export default function ResultsPanel({ result, rules = [], onRetry, isReady, dup
                         <th scope="col">Lane 키</th>
                         <th scope="col">일치 여부</th>
                         <th scope="col">Lane별 데이터 건수</th>
+                        {mappingUsed ? <><th scope="col">A 원본 / 정규화 / 표준 키</th><th scope="col">B 원본 / 정규화 / 표준 키</th><th scope="col">키 매핑 결과</th></> : null}
                         <th scope="col">규칙별 시트 비교값</th>
                       </tr>
                     </thead>
@@ -215,6 +236,7 @@ export default function ResultsPanel({ result, rules = [], onRetry, isReady, dup
                           <th scope="row">{row.key.map(value => String(decodeScalar(value))).join(' / ')}</th>
                           <td><span className={`status-badge status-badge--${row.status}`}>{statusLabels[row.status] ?? row.displayStatus}</span></td>
                           <td>첫 시트 {row.aCount.toLocaleString('ko-KR')}건 / 두 번째 시트 {row.bCount.toLocaleString('ko-KR')}건</td>
+                          {mappingUsed ? <><td><small>원본 {keyTraceDisplay(row, 'A', 'original')}</small><br /><small>정규화 {keyTraceDisplay(row, 'A', 'normalized')}</small><br /><strong>표준 {keyTraceDisplay(row, 'A', 'standard')}</strong></td><td><small>원본 {keyTraceDisplay(row, 'B', 'original')}</small><br /><small>정규화 {keyTraceDisplay(row, 'B', 'normalized')}</small><br /><strong>표준 {keyTraceDisplay(row, 'B', 'standard')}</strong></td><td>{[...(row.keyMapping?.A ?? []), ...(row.keyMapping?.B ?? [])].flat().some(item => item.applied) ? '매핑 적용' : '미적용 값 유지'}</td></> : null}
                           <td>
                             <div className="rule-value-pairs">
                               {rules.length ? rules.map((rule, ruleIndex) => {

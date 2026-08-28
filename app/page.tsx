@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ProgressPanel from './components/ProgressPanel';
 import ResultsPanel from './components/ResultsPanel';
+import KeyMappingPanel, { type KeyMappingUiState } from './components/KeyMappingPanel';
 import RulePolicyEditor from './components/RulePolicyEditor';
 import SearchableColumnSelect from './components/SearchableColumnSelect';
 import UploadPanel, { type UploadValue } from './components/UploadPanel';
@@ -12,6 +13,7 @@ import { listXlsxSheets, loadXlsx } from '../web/src/loaders/xlsxLoader';
 import type { ComparisonConfig, ComparisonResult, ComparisonRule } from '../web/src/engine/comparisonEngine';
 import type { WorkerResponse } from '../web/src/workers/workerProtocol';
 import { remapConfig, type BrowserTemplateV2 } from '../web/src/templates/remap';
+import { buildMapping } from '../web/src/mapping/keyMapping';
 
 type TemplateMessage = { tone: 'success' | 'error'; text: string };
 
@@ -76,6 +78,7 @@ export default function HomePage() {
   const [nullPolicy, setNullPolicy] = useState<NonNullable<ComparisonRule['nullPolicy']>>({ bothEmptyEqual: true, oneEmptyMismatch: true, emptyEqualsZero: false });
   const [caseSensitive, setCaseSensitive] = useState(true);
   const [policy, setPolicy] = useState('set');
+  const [keyMapping, setKeyMapping] = useState<KeyMappingUiState>({ enabled: false, applyA: [], applyB: [] });
   const [result, setResult] = useState<ComparisonResult>();
   const [resultRules, setResultRules] = useState<ComparisonRule[]>([]);
   const [progress, setProgress] = useState<{ completed: number; total: number }>();
@@ -87,7 +90,8 @@ export default function HomePage() {
   const rightHeaders = useMemo(() => right?.table?.headers ?? [], [right]);
   const headers = useMemo(() => [...new Set([...leftHeaders, ...rightHeaders])], [leftHeaders, rightHeaders]);
   const selectionsMatch = keys.length === keysB.length && compare.length === compareB.length;
-  const canRun = Boolean(left?.table && right?.table && keys.length && selectionsMatch && !progress);
+  const mappingReady = !keyMapping.enabled || Boolean(keyMapping.dictionary?.applicable && keyMapping.dictionary.groups.length && (keyMapping.applyA.length || keyMapping.applyB.length));
+  const canRun = Boolean(left?.table && right?.table && keys.length && selectionsMatch && mappingReady && !progress);
 
   useEffect(() => () => worker.current?.terminate(), []);
 
@@ -184,6 +188,11 @@ export default function HomePage() {
       caseSensitive,
       duplicatePolicy: policy as ComparisonConfig['duplicatePolicy'],
       nmPolicy: policy as ComparisonConfig['nmPolicy'],
+      keyNormalization: keyMapping.enabled ? { trim: true, caseInsensitive: !caseSensitive } : undefined,
+      keyMappings: keyMapping.enabled && keyMapping.dictionary ? {
+        A: Object.fromEntries(keyMapping.applyA.map(column => [column, { enabled: true, dictionary: keyMapping.dictionary! }])),
+        B: Object.fromEntries(keyMapping.applyB.map(column => [column, { enabled: true, dictionary: keyMapping.dictionary! }])),
+      } : undefined,
     };
     worker.current.postMessage({ type: 'compare', requestId: id, left: left.table, right: right.table, config });
   }
@@ -205,7 +214,24 @@ export default function HomePage() {
       return { side: 'both' as const, index, id, raw: id, display: id, normalizedName, sheet: null, fingerprint: `${normalizedName}:${occurrence}`, occurrence };
     });
     const effectiveRules = rules.length ? rules : compare.map((column, index) => ({ id: `rule-${index + 1}`, columnA: column, columnB: compareB[index], dataType: 'text' as const, aggregationMethod, nullPolicy }));
-    const value: BrowserTemplateV2 = { version: 2, expectations, keyColumns: keys, compareColumns: compare, rules: effectiveRules, representativeColumn, caseSensitive, duplicatePolicy: policy };
+    const value: BrowserTemplateV2 = {
+      version: 2,
+      expectations,
+      keyColumns: keys,
+      keyColumnsB: keysB,
+      compareColumns: compare,
+      rules: effectiveRules,
+      representativeColumn,
+      caseSensitive,
+      duplicatePolicy: policy,
+      keyMapping: keyMapping.dictionary ? {
+        enabled: keyMapping.enabled,
+        name: keyMapping.dictionary.name,
+        groups: keyMapping.dictionary.groups,
+        applyA: keyMapping.applyA,
+        applyB: keyMapping.applyB,
+      } : undefined,
+    };
     const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -226,7 +252,7 @@ export default function HomePage() {
         return;
       }
       setKeys(remapped.config.keyColumns.map(String));
-      setKeysB(remapped.config.keyColumns.map(String));
+      setKeysB((remapped.config.keyColumnsB ?? remapped.config.keyColumns).map(String));
       setCompare(remapped.config.compareColumns.map(String));
       setCompareB(remapped.config.rules.map(rule => String(rule.columnB)));
       setRules(remapped.config.rules);
@@ -235,6 +261,17 @@ export default function HomePage() {
       setRepresentativeColumn(remapped.config.representativeColumn === undefined ? undefined : String(remapped.config.representativeColumn));
       setCaseSensitive(remapped.config.caseSensitive);
       setPolicy(remapped.config.duplicatePolicy);
+      if (remapped.config.keyMapping) {
+        const importedMapping = remapped.config.keyMapping;
+        setKeyMapping({
+          enabled: importedMapping.enabled,
+          dictionary: buildMapping(importedMapping.groups, { trim: true, caseInsensitive: !remapped.config.caseSensitive }, importedMapping.name),
+          applyA: importedMapping.applyA.map(String),
+          applyB: importedMapping.applyB.map(String),
+        });
+      } else {
+        setKeyMapping({ enabled: false, applyA: [], applyB: [] });
+      }
       setTemplateMessage({ tone: 'success', text: '템플릿 설정을 현재 파일에 적용했습니다.' });
     } catch {
       setResult(emptyResult([{ code: 'INVALID_TEMPLATE', message: 'Template is not valid JSON.' }]));
@@ -255,9 +292,11 @@ export default function HomePage() {
       ? '각 파일에서 키 컬럼을 하나 이상 선택하세요.'
       : !selectionsMatch
         ? `양쪽 선택 개수를 맞추세요. 키 ${keys.length}:${keysB.length}, 비교 ${compare.length}:${compareB.length}`
-        : progress
-          ? '현재 비교가 진행 중입니다.'
-          : '';
+        : !mappingReady
+          ? '키 매핑 충돌을 해결하고 적용할 키 컬럼을 선택하세요.'
+          : progress
+            ? '현재 비교가 진행 중입니다.'
+            : '';
 
   return (
     <>
@@ -347,6 +386,7 @@ export default function HomePage() {
                       <SearchableColumnSelect label="두 번째 시트 키 컬럼" options={rightHeaders} value={keysB} onChange={setKeysB} />
                     </div>
                   </div>
+                  <KeyMappingPanel keysA={keys} keysB={keysB} caseSensitive={caseSensitive} value={keyMapping} onChange={setKeyMapping} />
 
                   <div className="setup-group">
                     <div className="setup-group__title"><h3>비교 컬럼</h3><p>값의 일치 여부를 확인할 컬럼입니다. 선택하지 않으면 키와 존재 여부만 비교합니다.</p></div>

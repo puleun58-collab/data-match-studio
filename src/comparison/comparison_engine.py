@@ -35,7 +35,14 @@ class ComparisonEngine:
         for key in keys:
             group_a = groups_a.get(key, frame_a.iloc[0:0])
             group_b = groups_b.get(key, frame_b.iloc[0:0])
-            result.extend(self._compare_key(key, group_a, group_b, config))
+            compared = self._compare_key(key, group_a, group_b, config)
+            mapping_details = {
+                "A": group_a["__key_mapping_details"].tolist() if "__key_mapping_details" in group_a else [],
+                "B": group_b["__key_mapping_details"].tolist() if "__key_mapping_details" in group_b else [],
+            }
+            for item in compared:
+                item.details["key_mapping"] = mapping_details
+            result.extend(compared)
         return result
 
     @staticmethod
@@ -299,6 +306,18 @@ def result_rows_to_frame(rows: list[ResultRow]) -> pd.DataFrame:
             "A 고유값 개수": row.a_unique_count, "B 고유값 개수": row.b_unique_count,
             "중복 유형": row.duplicate_type, "A 행 식별자": row.row_id_a, "B 행 식별자": row.row_id_b,
         }
+        mapping_details = row.details.get("key_mapping", {}) if row.details else {}
+        for side in ("A", "B"):
+            applications = [
+                application
+                for key_row in mapping_details.get(side, [])
+                for application in key_row
+            ]
+            base[f"{side} 원본 키"] = _json_value([item.get("original") for item in applications])
+            base[f"{side} 정규화 키"] = _json_value([item.get("normalized") for item in applications])
+            base[f"{side} 표준 키"] = _json_value([item.get("standard") for item in applications])
+            base[f"{side} 매핑 적용 여부"] = _json_value([item.get("applied") for item in applications])
+            base[f"{side} 적용 대표값"] = _json_value([item.get("canonical") for item in applications])
         if row.details:
             base["중복 상세"] = json.dumps(row.details, ensure_ascii=False, sort_keys=True, default=str)
         if not row.rule_results:
