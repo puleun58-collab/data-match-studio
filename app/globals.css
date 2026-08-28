@@ -1006,12 +1006,15 @@ select[multiple] option {
   gap: var(--space-5);
 }
 
+.key-mapping-panel__toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
 .key-mapping-panel__note {
   margin: 0;
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-control);
-  background: var(--color-surface-subtle);
-  box-shadow: inset 0 0 0 1px var(--color-border);
   color: var(--color-ink-muted);
   font-size: 0.82rem;
   line-height: 1.5;
@@ -1357,15 +1360,15 @@ summary {
   text-align: left;
 }
 
-.results-panel th,
-.results-panel td {
+.result-table-wrap th,
+.result-table-wrap td {
   padding: 0.9rem var(--space-4);
   border-block-end: 1px solid var(--color-border);
   text-align: left;
   vertical-align: top;
 }
 
-.results-panel th {
+.result-table-wrap th {
   position: sticky;
   inset-block-start: 0;
   z-index: 1;
@@ -1376,8 +1379,8 @@ summary {
   letter-spacing: 0.02em;
 }
 
-.results-panel tbody tr:last-child td,
-.results-panel tbody tr:last-child th {
+.result-table-wrap tbody tr:last-child td,
+.result-table-wrap tbody tr:last-child th {
   border-block-end: 0;
 }
 
