@@ -136,12 +136,12 @@ export default function KeyMappingPanel({ keysA, keysB, caseSensitive, value, on
       </div>
       <div className="key-mapping-panel__toggle">
         <label className="checkbox-label"><input type="checkbox" checked={enabled} onChange={event => setEnabled(event.target.checked)} /> 키 이름 통합 사용</label>
-        {enabled ? <span className="key-mapping-panel__note">양쪽 파일에서 선택한 키 컬럼에 같은 사전을 적용합니다.</span> : null}
+        {enabled ? <span className="key-mapping-panel__note">양쪽 파일에서 선택한 키 컬럼에 같은 매핑을 적용합니다.</span> : null}
       </div>
       {enabled ? (
         <div className="key-mapping-panel__body">
           <div className="column-pair-grid">
-            <Field label="매핑 이름" htmlFor="mapping-name" hint="사전을 구분할 이름"><input id="mapping-name" type="text" value={name} onChange={event => setName(event.target.value)} /></Field>
+            <Field label="매핑 이름" htmlFor="mapping-name" hint="매핑을 구분할 이름"><input id="mapping-name" type="text" value={name} onChange={event => setName(event.target.value)} /></Field>
             <Field label="매핑 파일" htmlFor="mapping-file" hint="XLSX 또는 UTF-8 CSV"><input id="mapping-file" type="file" accept=".xlsx,.csv" onChange={event => chooseFile(event.target.files?.[0])} /></Field>
           </div>
           {sheets.length || file ? (

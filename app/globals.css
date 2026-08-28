@@ -43,6 +43,7 @@
   --ease-fluid: cubic-bezier(0.32, 0.72, 0, 1);
   --layer-nav: 20;
   --layer-skip: 30;
+  --icon-chevron-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%2352606c' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 @media (prefers-color-scheme: dark) {
@@ -71,6 +72,7 @@
     --shadow-shell: 0 36px 100px rgb(0 5 10 / 0.32), inset 0 1px 0 rgb(255 255 255 / 0.08);
     --shadow-control: 0 8px 24px rgb(0 5 10 / 0.2), inset 0 1px 0 rgb(255 255 255 / 0.06);
     --focus-ring: 0 0 0 4px rgb(91 168 213 / 0.25);
+    --icon-chevron-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23abb7c1' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }
 }
 
@@ -569,7 +571,7 @@ h3 {
 }
 
 .upload-panel__meta {
-  margin-block: var(--space-5) 0;
+  margin-block: var(--space-5) var(--space-4);
   overflow-wrap: normal;
   color: var(--color-ink-muted);
   font-size: 0.88rem;
@@ -734,6 +736,18 @@ select:hover {
   box-shadow: var(--shadow-control), inset 0 0 0 1px var(--color-accent), inset 0 1px 0 color-mix(in srgb, var(--color-surface-raised) 88%, transparent);
 }
 
+select:not([multiple]) {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: var(--icon-chevron-down);
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 0.7rem;
+  padding-right: 2.5rem;
+  cursor: pointer;
+}
+
 select[multiple] {
   min-height: 12rem;
   padding: var(--space-2);
@@ -757,7 +771,7 @@ select[multiple] option {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: 0.68rem 0.8rem;
+  padding: 0.68rem 1rem 0.68rem 0.8rem;
   border: 0;
   border-radius: var(--radius-control);
   color: var(--color-ink);
@@ -785,8 +799,13 @@ select[multiple] option {
 }
 
 .dropdown-multiselect__caret {
+  width: 0.7rem;
+  height: 0.7rem;
   flex: 0 0 auto;
-  color: var(--color-ink-muted);
+  background-image: var(--icon-chevron-down);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
 }
 
 .dropdown-multiselect__panel {

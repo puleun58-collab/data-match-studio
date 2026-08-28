@@ -51,7 +51,7 @@ export default function DropdownMultiSelect({ id, options, value, onChange, disa
         onClick={() => setOpen(previous => !previous)}
       >
         <span className="dropdown-multiselect__summary">{summary}</span>
-        <span className="dropdown-multiselect__caret" aria-hidden="true">▾</span>
+        <span className="dropdown-multiselect__caret" aria-hidden="true" />
       </button>
       {open ? (
         <div className="dropdown-multiselect__panel" id={listId} role="listbox" aria-multiselectable="true">

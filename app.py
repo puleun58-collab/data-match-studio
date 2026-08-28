@@ -420,7 +420,7 @@ def render_key_mapping_options(
     groups: list[MappingGroup] = []
     with st.expander("키 이름 통합", expanded=True):
         st.caption("서로 다른 이름을 하나의 표준 키로 통합한 뒤 비교합니다. XLSX·CSV의 대표값 열은 직접 선택하세요.")
-        st.info("양쪽 파일에서 선택한 키 컬럼에 같은 사전을 적용합니다.")
+        st.info("양쪽 파일에서 선택한 키 컬럼에 같은 매핑을 적용합니다.")
         mapping_file = st.file_uploader("매핑 파일", type=["xlsx", "csv"], key="mapping_file")
         if mapping_file is not None:
             try:
